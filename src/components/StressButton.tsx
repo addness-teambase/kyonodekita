@@ -49,19 +49,19 @@ const ObservationButton: React.FC = () => {
     ];
 
   return (
-    <div className="relative w-full flex flex-col items-center justify-center gap-6">
+    <div className="relative">
       <StressAnimation isAnimating={isAnimating} />
 
       <button
         onClick={() => setIsOpen(true)}
-        className="relative z-10 w-32 h-32 rounded-full bg-blue-500
-                  text-white flex flex-col items-center justify-center shadow-lg transform 
-                  transition-all duration-200 hover:scale-105 active:scale-95 active:shadow-md
+        className="w-32 h-32 rounded-full bg-gradient-to-r from-blue-600 to-blue-400
+                  text-white flex flex-col items-center justify-center shadow-xl 
+                  transition-all duration-150 hover:scale-105 active:scale-90 active:shadow-inner
                   focus:outline-none focus:ring-4 focus:ring-white/30"
         aria-label={recordMode === 'stress' ? '不安に思ったことを記録' : '良かったことを記録'}
       >
         <Icon className="w-8 h-8 mb-2" />
-        <span className="text-base">記録する</span>
+        <span className="text-base font-medium">記録する</span>
       </button>
 
       <Dialog
@@ -72,15 +72,15 @@ const ObservationButton: React.FC = () => {
         }}
         className="relative z-50"
       >
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/40" aria-hidden="true" />
 
         <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <Dialog.Title className="text-lg font-semibold text-gray-900 mb-4">
+          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
               {recordMode === 'stress' ? '不安に思ったことを記録' : '良かったことを記録'}
             </Dialog.Title>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   レベル
@@ -90,9 +90,9 @@ const ObservationButton: React.FC = () => {
                     <button
                       key={option.value}
                       onClick={() => setLevel(option.value as typeof level)}
-                      className={`flex-1 py-2 px-3 rounded-xl text-sm transition-all ${level === option.value
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all ${level === option.value
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                     >
                       {option.label}
@@ -114,26 +114,26 @@ const ObservationButton: React.FC = () => {
                   placeholder={recordMode === 'stress'
                     ? '不安に思ったことの内容を記録してください'
                     : '良かったことの内容を記録してください'}
-                  className={`w-full p-3 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${error ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full p-3.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${error ? 'border-red-500' : 'border-gray-300'
                     }`}
-                  rows={4}
+                  rows={5}
                 />
                 {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
               </div>
 
-              <div className="flex gap-2 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => {
                     setIsOpen(false);
                     setError('');
                   }}
-                  className="flex-1 py-2.5 px-4 border border-gray-300 rounded-xl text-sm hover:bg-gray-50"
+                  className="flex-1 py-3 px-4 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50"
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleSubmit}
-                  className="flex-1 py-2.5 px-4 bg-blue-500 text-white rounded-xl text-sm hover:bg-blue-600"
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 shadow-md"
                 >
                   記録する
                 </button>

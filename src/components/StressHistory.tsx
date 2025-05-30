@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, ChevronDown, ChevronUp, Trash2, History } from 'lucide-react';
+import { Clock, ChevronDown, ChevronUp, Trash2, History, X } from 'lucide-react';
 import { useStress } from '../context/StressContext';
 import { formatTime } from '../utils/storageUtils';
 import { format, isSameDay, isToday } from 'date-fns';
@@ -30,7 +30,7 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
     .filter(event => isSameDay(new Date(event.timestamp), selectedDate))
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  const displayEvents = isExpanded ? selectedEvents : selectedEvents.slice(0, 5);
+  const displayEvents = isExpanded ? selectedEvents : selectedEvents.slice(0, 3);
 
   const stats = mode === 'stress'
     ? {
@@ -80,6 +80,24 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
     }
   };
 
+  const getLevelTextColor = (level: string) => {
+    if (mode === 'stress') {
+      switch (level) {
+        case 'high': return 'text-red-600';
+        case 'medium': return 'text-yellow-600';
+        case 'low': return 'text-green-600';
+        default: return 'text-gray-600';
+      }
+    } else {
+      switch (level) {
+        case 'big': return 'text-emerald-600';
+        case 'medium': return 'text-blue-600';
+        case 'small': return 'text-sky-600';
+        default: return 'text-gray-600';
+      }
+    }
+  };
+
   const handleDelete = (id: string) => {
     // 今日の記録のみ削除可能
     if (isToday(selectedDate)) {
@@ -99,44 +117,66 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white rounded-2xl p-4 shadow-md mt-3 animate-slideUp">
+      <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => setShowHistory(!showHistory)}
-          className="flex items-center gap-2 text-base font-medium text-gray-900 hover:text-gray-600 transition-colors"
+          className="flex items-center gap-1 text-sm font-medium text-gray-900 hover:text-gray-600 transition-colors"
         >
-          <Clock size={18} />
+          <History size={14} className="text-blue-500" />
           <span>{mode === 'stress' ? '不安に思ったこと履歴' : '良かったこと履歴'}</span>
-          {showHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">
-            {format(selectedDate, 'M月d日(E)', { locale: ja })}
+        <div className="flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-medium text-blue-600">
+            {format(selectedDate, 'M/d(E)', { locale: ja })}
           </span>
         </div>
       </div>
 
       {showHistory && (
         <>
-          <div className="flex justify-end gap-3 mb-3 text-xs">
+          <div className="grid grid-cols-3 gap-1 mb-3">
             {mode === 'stress' ? (
               <>
-                <span className="text-gray-600">強: {stats.high}</span>
-                <span className="text-gray-600">普: {stats.medium}</span>
-                <span className="text-gray-600">軽: {stats.low}</span>
+                <div className="bg-red-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">強い</span>
+                  <p className="text-base font-semibold text-red-600">{stats.high}</p>
+                </div>
+                <div className="bg-yellow-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">普通</span>
+                  <p className="text-base font-semibold text-yellow-600">{stats.medium}</p>
+                </div>
+                <div className="bg-green-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">軽い</span>
+                  <p className="text-base font-semibold text-green-600">{stats.low}</p>
+                </div>
               </>
             ) : (
               <>
-                <span className="text-gray-600">大: {stats.big}</span>
-                <span className="text-gray-600">普: {stats.medium}</span>
-                <span className="text-gray-600">小: {stats.small}</span>
+                <div className="bg-emerald-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">大きな</span>
+                  <p className="text-base font-semibold text-emerald-600">{stats.big}</p>
+                </div>
+                <div className="bg-blue-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">普通の</span>
+                  <p className="text-base font-semibold text-blue-600">{stats.medium}</p>
+                </div>
+                <div className="bg-sky-50 p-1.5 rounded-lg text-center">
+                  <span className="text-2xs text-gray-600">小さな</span>
+                  <p className="text-base font-semibold text-sky-600">{stats.small}</p>
+                </div>
               </>
             )}
           </div>
 
           {selectedEvents.length === 0 ? (
-            <div className="text-center py-4 text-gray-600">
-              <p>この日の{mode === 'stress' ? '不安に思ったこと' : '良かったこと'}はありません。</p>
+            <div className="text-center py-6 bg-gray-50 rounded-xl">
+              <div className="text-gray-400 mb-1">
+                <Clock size={24} className="mx-auto" />
+              </div>
+              <p className="text-xs text-gray-600">この日の{mode === 'stress' ? '不安に思ったこと' : '良かったこと'}はありません。</p>
+              <p className="text-2xs text-gray-500 mt-0.5">記録ボタンから新しく記録してみましょう。</p>
             </div>
           ) : (
             <>
@@ -144,18 +184,20 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
                 {displayEvents.map((event) => {
                   const eventDate = new Date(event.timestamp);
                   const canDelete = isToday(eventDate);
+                  const levelColor = getLevelColor(event.level);
+                  const levelTextColor = getLevelTextColor(event.level);
 
                   return (
                     <li
                       key={event.id}
-                      className="flex flex-col p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                      className="flex flex-col p-2.5 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors animate-slideInRight border-l-3 border-transparent hover:border-blue-300"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
-                          <div className={`w-2 h-2 ${getLevelColor(event.level)} rounded-full mr-3`}></div>
-                          <span className="text-gray-900">{formatTime(event.timestamp)}</span>
-                          <span className="ml-4 text-sm text-gray-600">
-                            {mode === 'stress' ? '不安レベル' : '良かったこと'}: {getLevelText(event.level)}
+                          <div className={`w-2 h-2 ${levelColor} rounded-full mr-2`}></div>
+                          <span className="text-xs font-medium text-gray-900">{formatTime(event.timestamp)}</span>
+                          <span className={`ml-2 text-2xs font-medium ${levelTextColor}`}>
+                            {getLevelText(event.level)}
                           </span>
                         </div>
                         {canDelete && (
@@ -164,31 +206,31 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
                             className="text-red-400 hover:text-red-600 transition-colors p-1 rounded-full hover:bg-red-50"
                             aria-label="削除"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
                       {event.note && (
-                        <p className="mt-2 ml-5 text-sm text-gray-600">{event.note}</p>
+                        <p className="mt-1 ml-4 text-xs text-gray-600 break-words">{event.note}</p>
                       )}
                     </li>
                   );
                 })}
               </ul>
 
-              {selectedEvents.length > 5 && (
+              {selectedEvents.length > 3 && (
                 <button
-                  className="mt-4 w-full py-2 flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors"
+                  className="mt-3 w-full py-1.5 flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg text-xs"
                   onClick={() => setIsExpanded(!isExpanded)}
                 >
                   {isExpanded ? (
                     <>
-                      <ChevronUp size={16} className="mr-1" />
+                      <ChevronUp size={14} className="mr-1" />
                       閉じる
                     </>
                   ) : (
                     <>
-                      <ChevronDown size={16} className="mr-1" />
+                      <ChevronDown size={14} className="mr-1" />
                       全{selectedEvents.length}件を表示
                     </>
                   )}
@@ -204,26 +246,35 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
         onClose={() => setDeleteConfirmation({ isOpen: false, eventId: null })}
         className="relative z-50"
       >
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/40" aria-hidden="true" />
 
         <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <Dialog.Title className="text-xl font-semibold text-gray-900 mb-4">
-              記録を削除
-            </Dialog.Title>
-            <p className="text-gray-600 mb-6">
-              この{mode === 'stress' ? '不安に思ったこと' : '良かったこと'}を削除してもよろしいですか？
-            </p>
-            <div className="flex gap-3 justify-end">
+          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <Dialog.Title className="text-lg font-semibold text-gray-900">
+                記録を削除
+              </Dialog.Title>
               <button
                 onClick={() => setDeleteConfirmation({ isOpen: false, eventId: null })}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="text-gray-400 hover:text-gray-600 rounded-full p-1 hover:bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              この{mode === 'stress' ? '不安に思ったこと' : '良かったこと'}を削除してもよろしいですか？
+              この操作は元に戻せません。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDeleteConfirmation({ isOpen: false, eventId: null })}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 キャンセル
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                className="px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm rounded-lg hover:from-red-600 hover:to-red-700 transition-colors shadow-sm"
               >
                 削除する
               </button>

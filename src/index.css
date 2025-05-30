@@ -2,11 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* スクロールの挙動を改善 */
+html, body {
+  scroll-behavior: smooth;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 @layer utilities {
   .animation-delay-100 {
     animation-delay: 0.1s;
   }
-  
+
   .animation-delay-200 {
     animation-delay: 0.2s;
   }
@@ -14,11 +39,12 @@
 
 @keyframes float-up {
   0% {
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 0.7;
   }
+
   100% {
-    transform: translateY(-100vh) scale(0);
+    transform: translate3d(0, -100vh, 0) scale(0);
     opacity: 0;
   }
 }
@@ -27,33 +53,81 @@
   0% {
     opacity: 0.3;
   }
+
   50% {
     opacity: 0.1;
   }
+
   100% {
     opacity: 0;
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(20px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
 /* タブ切り替えアニメーション */
 .tab-enter {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translate3d(0, 10px, 0);
 }
 
 .tab-enter-active {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
   transition: opacity 300ms, transform 300ms;
 }
 
 .tab-exit {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
 }
 
 .tab-exit-active {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translate3d(0, -10px, 0);
   transition: opacity 300ms, transform 300ms;
 }

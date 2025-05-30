@@ -12,6 +12,12 @@ export default {
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
+      fontSize: {
+        '2xs': '0.625rem', // 10px
+      },
+      borderWidth: {
+        '3': '3px',
+      }
     },
   },
   plugins: [],

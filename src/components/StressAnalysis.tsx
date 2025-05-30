@@ -18,7 +18,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'healthy',
           title: '健康状態：良好',
-          message: 'まだ今日のストレス記録がありません。リラックスした状態を維持しましょう。',
+          message: 'まだ今日のストレス記録がありません。',
           icon: Leaf,
           color: 'text-emerald-600',
           bg: 'bg-emerald-50',
@@ -30,7 +30,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'severe',
           title: '健康状態：要注意',
-          message: '心身の健康のために、休息を取ることをお勧めします。',
+          message: '休息を取ることをお勧めします。',
           icon: AlertCircle,
           color: 'text-rose-600',
           bg: 'bg-rose-50',
@@ -40,7 +40,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'moderate',
           title: '健康状態：やや疲れ気味',
-          message: '少し疲れが見られます。深呼吸や軽い運動を試してみましょう。',
+          message: '深呼吸や軽い運動を試してみましょう。',
           icon: AlertCircle,
           color: 'text-amber-600',
           bg: 'bg-amber-50',
@@ -50,7 +50,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'mild',
           title: '健康状態：普通',
-          message: '通常の範囲内のストレスです。早めの気分転換を。',
+          message: '早めの気分転換を。',
           icon: Leaf,
           color: 'text-sky-600',
           bg: 'bg-sky-50',
@@ -60,7 +60,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'healthy',
           title: '健康状態：良好',
-          message: '心身ともに健康な状態です。この調子を維持しましょう。',
+          message: 'この調子を維持しましょう。',
           icon: Leaf,
           color: 'text-emerald-600',
           bg: 'bg-emerald-50',
@@ -79,7 +79,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'normal',
           title: '今日の良いこと',
-          message: 'まだ今日の記録がありません。良いことを見つけて記録してみましょう。',
+          message: 'まだ記録がありません。',
           icon: Leaf,
           color: 'text-blue-600',
           bg: 'bg-blue-50',
@@ -91,7 +91,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'excellent',
           title: '素晴らしい一日！',
-          message: '大きな良いことがたくさんありましたね。素晴らしい成果です！',
+          message: '大きな良いことがたくさんありましたね。',
           icon: Leaf,
           color: 'text-emerald-600',
           bg: 'bg-emerald-50',
@@ -101,7 +101,7 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
         return {
           level: 'great',
           title: '頑張っています！',
-          message: '意味のある良いことを見つけられていますね。その調子です！',
+          message: '意味のある良いことを見つけられています。',
           icon: Leaf,
           color: 'text-blue-600',
           bg: 'bg-blue-50',
@@ -125,14 +125,14 @@ const StressAnalysis: React.FC<{ mode: 'stress' | 'good' }> = ({ mode }) => {
   const Icon = analysis.icon;
 
   return (
-    <div className={`rounded-xl border ${analysis.border} ${analysis.bg} p-3`}>
-      <div className="flex items-center gap-2">
-        <div className={`p-1.5 rounded-full ${analysis.bg} ${analysis.color}`}>
-          <Icon className="w-5 h-5" />
+    <div className={`rounded-xl border ${analysis.border} ${analysis.bg} p-2.5 mb-2`}>
+      <div className="flex items-center gap-1.5">
+        <div className={`p-1 rounded-full ${analysis.bg} ${analysis.color}`}>
+          <Icon className="w-4 h-4" />
         </div>
-        <h3 className={`font-medium ${analysis.color}`}>{analysis.title}</h3>
+        <h3 className={`text-xs font-medium ${analysis.color}`}>{analysis.title}</h3>
       </div>
-      <p className={`${analysis.color} text-sm mt-2 opacity-90`}>{analysis.message}</p>
+      <p className={`${analysis.color} text-2xs mt-1 opacity-90`}>{analysis.message}</p>
     </div>
   );
 };
