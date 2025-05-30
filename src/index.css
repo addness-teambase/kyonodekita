@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .animation-delay-100 {
+    animation-delay: 0.1s;
+  }
+  
+  .animation-delay-200 {
+    animation-delay: 0.2s;
+  }
+}
+
+@keyframes float-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-100vh) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* タブ切り替えアニメーション */
+.tab-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.tab-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.tab-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tab-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
+}
