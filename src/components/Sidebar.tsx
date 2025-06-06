@@ -46,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                 <div className="flex flex-col h-full">
                     {/* ヘッダー */}
                     <div className="flex items-center justify-between px-4 py-3 border-b">
-                        <h2 className="text-lg font-bold text-blue-500">きょうのできた</h2>
+                        <h2 className="text-lg font-bold text-orange-500">きょうのできた</h2>
                         <button
                             onClick={onClose}
                             className="md:hidden p-1.5 rounded-full hover:bg-gray-100 text-gray-500"
@@ -58,8 +58,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                     {/* ユーザー情報 */}
                     {user && (
                         <div className="flex items-center gap-2 p-4 border-b">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                <User size={20} className="text-blue-500" />
+                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                                <User size={20} className="text-orange-500" />
                             </div>
                             <div>
                                 <p className="text-sm font-medium">{user.username}</p>
@@ -75,7 +75,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                             <button
                                 onClick={() => setRecordMode('stress')}
                                 className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${recordMode === 'stress'
-                                        ? 'bg-white text-blue-500 shadow-sm'
+                                        ? 'bg-white text-orange-500 shadow-sm'
                                         : 'bg-transparent text-gray-600 hover:bg-white/50'
                                     }`}
                             >
@@ -85,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                             <button
                                 onClick={() => setRecordMode('good')}
                                 className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${recordMode === 'good'
-                                        ? 'bg-white text-blue-500 shadow-sm'
+                                        ? 'bg-white text-orange-500 shadow-sm'
                                         : 'bg-transparent text-gray-600 hover:bg-white/50'
                                     }`}
                             >
@@ -103,7 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                                 <button
                                     onClick={() => handleViewChange('home')}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeView === 'home'
-                                            ? 'bg-blue-50 text-blue-500'
+                                            ? 'bg-orange-50 text-orange-500'
                                             : 'text-gray-700 hover:bg-gray-50'
                                         }`}
                                 >
@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                                 <button
                                     onClick={() => handleViewChange('analytics')}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeView === 'analytics'
-                                            ? 'bg-blue-50 text-blue-500'
+                                            ? 'bg-orange-50 text-orange-500'
                                             : 'text-gray-700 hover:bg-gray-50'
                                         }`}
                                 >
@@ -127,7 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                                 <button
                                     onClick={() => handleViewChange('history')}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeView === 'history'
-                                            ? 'bg-blue-50 text-blue-500'
+                                            ? 'bg-orange-50 text-orange-500'
                                             : 'text-gray-700 hover:bg-gray-50'
                                         }`}
                                 >
@@ -139,7 +139,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                                 <button
                                     onClick={() => handleViewChange('settings')}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeView === 'settings'
-                                            ? 'bg-blue-50 text-blue-500'
+                                            ? 'bg-orange-50 text-orange-500'
                                             : 'text-gray-700 hover:bg-gray-50'
                                         }`}
                                 >
@@ -156,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                             <span className="text-xs text-gray-500">ダークモード</span>
                             <button
                                 onClick={toggleDarkMode}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${darkMode ? 'bg-blue-500' : 'bg-gray-200'
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${darkMode ? 'bg-orange-500' : 'bg-gray-200'
                                     }`}
                             >
                                 <span
@@ -164,7 +164,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onLogoutClick }) => 
                                         }`}
                                 />
                                 {darkMode ? (
-                                    <Moon size={12} className="absolute right-1 text-blue-100" />
+                                    <Moon size={12} className="absolute right-1 text-orange-100" />
                                 ) : (
                                     <Sun size={12} className="absolute left-1 text-gray-400" />
                                 )}

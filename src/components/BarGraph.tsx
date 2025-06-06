@@ -11,7 +11,16 @@ interface BarGraphProps {
 
 const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
     const [selectedView, setSelectedView] = useState<'daily' | 'weekly' | 'calendar'>('daily');
-    const { stressEvents, goodThingEvents, selectedDate, todayEvents, todayGoodThings, setSelectedDate } = useStress();
+    const {
+        stressEvents,
+        goodThingEvents,
+        selectedDate,
+        todayEvents,
+        todayGoodThings,
+        setSelectedDate,
+        today,
+        lastSelectedDate
+    } = useStress();
     const [showLevelInfo, setShowLevelInfo] = useState(false);
     const [showTotal, setShowTotal] = useState(false); // 個別表示をデフォルトに変更
 
@@ -488,53 +497,75 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
                     {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
                         <div
                             key={day}
-                            className={`text-center text-2xs font-medium p-0.5 ${index === 0 ? 'text-red-400' : index === 6 ? 'text-blue-400' : 'text-gray-600'}`}
+                            className={`text-center text-2xs font-medium p-0.5 ${index === 0 ? 'text-red-400' : index === 6 ? 'text-orange-400' : 'text-gray-600'}`}
                         >
                             {day}
                         </div>
                     ))}
-                    {calendarDays.map((day, i) => (
-                        <button
-                            key={i}
-                            onClick={() => day.date && setSelectedDate(day.date)}
-                            disabled={!day.date}
-                            className={`aspect-square p-0.5 transition-all ${day.date && isSameDay(day.date, selectedDate)
-                                ? 'bg-blue-100 rounded-md shadow-sm'
-                                : day.date
-                                    ? 'bg-white hover:bg-gray-50 rounded-md'
-                                    : 'bg-gray-50'
-                                }`}
-                        >
-                            {day.date && (
-                                <div className="h-full flex flex-col items-center">
-                                    <span className={`text-2xs font-medium ${getDay(day.date) === 0 ? 'text-red-500' :
-                                        getDay(day.date) === 6 ? 'text-blue-500' :
-                                            'text-gray-700'
-                                        }`}>
-                                        {format(day.date, 'd')}
-                                    </span>
-                                    {day.events.length > 0 && (
-                                        <div className="flex flex-wrap justify-center gap-0.5 mt-0.5 max-w-full">
-                                            {day.total > 0 && <div className="text-2xs font-semibold text-purple-500">{day.total}</div>}
-                                            {mode === 'stress' ? (
-                                                <>
-                                                    {day.hasHigh && <div className="w-1 h-1 bg-red-400 rounded-full" />}
-                                                    {day.hasMedium && <div className="w-1 h-1 bg-yellow-400 rounded-full" />}
-                                                    {day.hasLow && <div className="w-1 h-1 bg-green-400 rounded-full" />}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {day.hasHigh && <div className="w-1 h-1 bg-emerald-400 rounded-full" />}
-                                                    {day.hasMedium && <div className="w-1 h-1 bg-blue-400 rounded-full" />}
-                                                    {day.hasLow && <div className="w-1 h-1 bg-sky-400 rounded-full" />}
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </button>
-                    ))}
+                    {calendarDays.map((day, i) => {
+                        // 選択状態の判定
+                        const isSelected = day.date && isSameDay(day.date, selectedDate);
+                        const isToday = day.date && isSameDay(day.date, today);
+                        const wasSelectedBefore = day.date && lastSelectedDate && isSameDay(day.date, lastSelectedDate);
+
+                        // クラス名の決定
+                        let className = 'aspect-square p-0.5 transition-all ';
+                        if (!day.date) {
+                            className += 'bg-gray-50';
+                        } else if (isSelected) {
+                            className += 'bg-orange-100 rounded-md shadow-sm'; // 選択された日付
+                        } else if (isToday) {
+                            className += 'bg-orange-50 rounded-md border border-orange-200'; // 今日の日付
+                        } else if (wasSelectedBefore) {
+                            className += 'bg-orange-50 rounded-md border border-orange-100'; // 以前に選択された日付
+                        } else {
+                            className += 'bg-white hover:bg-gray-50 rounded-md';
+                        }
+
+                        return (
+                            <button
+                                key={i}
+                                onClick={() => day.date && setSelectedDate(day.date)}
+                                disabled={!day.date}
+                                className={className}
+                            >
+                                {day.date && (
+                                    <div className="h-full flex flex-col items-center">
+                                        <span className={`text-2xs font-medium ${isToday
+                                                ? 'text-orange-600 font-bold' // 今日の日付のテキスト色
+                                                : wasSelectedBefore
+                                                    ? 'text-orange-600' // 以前に選択された日付
+                                                    : getDay(day.date) === 0
+                                                        ? 'text-red-500'
+                                                        : getDay(day.date) === 6
+                                                            ? 'text-orange-500'
+                                                            : 'text-gray-700'
+                                            }`}>
+                                            {format(day.date, 'd')}
+                                        </span>
+                                        {day.events.length > 0 && (
+                                            <div className="flex flex-wrap justify-center gap-0.5 mt-0.5 max-w-full">
+                                                {day.total > 0 && <div className="text-2xs font-semibold text-purple-500">{day.total}</div>}
+                                                {mode === 'stress' ? (
+                                                    <>
+                                                        {day.hasHigh && <div className="w-1 h-1 bg-red-400 rounded-full" />}
+                                                        {day.hasMedium && <div className="w-1 h-1 bg-yellow-400 rounded-full" />}
+                                                        {day.hasLow && <div className="w-1 h-1 bg-green-400 rounded-full" />}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {day.hasHigh && <div className="w-1 h-1 bg-emerald-400 rounded-full" />}
+                                                        {day.hasMedium && <div className="w-1 h-1 bg-blue-400 rounded-full" />}
+                                                        {day.hasLow && <div className="w-1 h-1 bg-sky-400 rounded-full" />}
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -544,7 +575,7 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
         <div className="bg-white rounded-2xl p-4 shadow-md">
             <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-medium text-gray-900 flex items-center gap-1">
-                    <BarChart size={14} className="text-blue-500" />
+                    <BarChart size={14} className="text-orange-500" />
                     <span className="whitespace-nowrap">
                         {mode === 'stress' ? '不安に思ったこと分析' : '良かったこと分析'}
                     </span>
@@ -553,8 +584,8 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
                     <button
                         onClick={() => setSelectedView('daily')}
                         className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${selectedView === 'daily'
-                            ? 'bg-blue-500 text-white shadow-sm'
-                            : 'text-blue-500 hover:bg-blue-50'
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : 'text-orange-500 hover:bg-orange-50'
                             }`}
                     >
                         今日
@@ -562,8 +593,8 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
                     <button
                         onClick={() => setSelectedView('weekly')}
                         className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${selectedView === 'weekly'
-                            ? 'bg-blue-500 text-white shadow-sm'
-                            : 'text-blue-500 hover:bg-blue-50'
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : 'text-orange-500 hover:bg-orange-50'
                             }`}
                     >
                         週間
@@ -571,8 +602,8 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
                     <button
                         onClick={() => setSelectedView('calendar')}
                         className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${selectedView === 'calendar'
-                            ? 'bg-blue-500 text-white shadow-sm'
-                            : 'text-blue-500 hover:bg-blue-50'
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : 'text-orange-500 hover:bg-orange-50'
                             }`}
                     >
                         カレンダー

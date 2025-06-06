@@ -16,7 +16,7 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-500 to-blue-400 md:flex">
+    <div className="min-h-screen bg-gradient-to-b from-orange-500 to-orange-400 md:flex">
       {/* サイドバー */}
       <Sidebar
         isOpen={sidebarOpen}
@@ -62,7 +62,7 @@ function AppContent() {
               <button
                 onClick={() => setRecordMode('stress')}
                 className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${recordMode === 'stress'
-                  ? 'bg-white text-blue-500 shadow-md'
+                  ? 'bg-white text-orange-500 shadow-md'
                   : 'bg-transparent text-white hover:bg-white/10'
                   }`}
               >
@@ -72,7 +72,7 @@ function AppContent() {
               <button
                 onClick={() => setRecordMode('good')}
                 className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${recordMode === 'good'
-                  ? 'bg-white text-blue-500 shadow-md'
+                  ? 'bg-white text-orange-500 shadow-md'
                   : 'bg-transparent text-white hover:bg-white/10'
                   }`}
               >
@@ -110,7 +110,7 @@ function MainApp() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-500 to-blue-400">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-orange-500 to-orange-400">
         <div className="flex flex-col items-center text-white">
           <svg className="animate-spin h-10 w-10 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

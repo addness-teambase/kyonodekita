@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, startOfToday } from 'date-fns';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
@@ -43,6 +43,8 @@ interface StressContextType {
   setIsAnimating: (value: boolean) => void;
   cachedContent: CachedContent;
   setCachedContent: React.Dispatch<React.SetStateAction<CachedContent>>;
+  lastSelectedDate: Date | null;
+  today: Date;
 }
 
 const StressContext = createContext<StressContextType | undefined>(undefined);
@@ -62,18 +64,30 @@ interface StressProviderProps {
 export const StressProvider: React.FC<StressProviderProps> = ({ children }) => {
   const [stressEvents, setStressEvents] = useState<StressEvent[]>([]);
   const [goodThingEvents, setGoodThingEvents] = useState<GoodThingEvent[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(startOfToday());
   const [recordMode, setRecordMode] = useState<'stress' | 'good'>('stress');
   const [isAnimating, setIsAnimating] = useState(false);
   const [cachedContent, setCachedContent] = useState<CachedContent>({});
+  const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
+
+  const today = startOfToday();
 
   const todayEvents = stressEvents.filter(event =>
-    isSameDay(new Date(event.timestamp), new Date())
+    isSameDay(new Date(event.timestamp), today)
   );
 
   const todayGoodThings = goodThingEvents.filter(event =>
-    isSameDay(new Date(event.timestamp), new Date())
+    isSameDay(new Date(event.timestamp), today)
   );
+
+  const updateSelectedDate = (date: Date) => {
+    setSelectedDate(date);
+    if (!isSameDay(date, today)) {
+      setLastSelectedDate(date);
+    } else {
+      setLastSelectedDate(null);
+    }
+  };
 
   const addStressEvent = (level: 'high' | 'medium' | 'low', note: string) => {
     const newEvent: StressEvent = {
@@ -114,7 +128,7 @@ export const StressProvider: React.FC<StressProviderProps> = ({ children }) => {
       todayEvents,
       todayGoodThings,
       selectedDate,
-      setSelectedDate,
+      setSelectedDate: updateSelectedDate,
       recordMode,
       setRecordMode,
       addStressEvent,
@@ -124,7 +138,9 @@ export const StressProvider: React.FC<StressProviderProps> = ({ children }) => {
       isAnimating,
       setIsAnimating,
       cachedContent,
-      setCachedContent
+      setCachedContent,
+      lastSelectedDate,
+      today
     }}>
       {children}
     </StressContext.Provider>

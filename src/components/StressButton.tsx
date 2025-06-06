@@ -54,7 +54,7 @@ const ObservationButton: React.FC = () => {
 
       <button
         onClick={() => setIsOpen(true)}
-        className="w-32 h-32 rounded-full bg-gradient-to-r from-blue-600 to-blue-400
+        className="w-32 h-32 rounded-full bg-gradient-to-r from-orange-600 to-orange-400
                   text-white flex flex-col items-center justify-center shadow-xl 
                   transition-all duration-150 hover:scale-105 active:scale-90 active:shadow-inner
                   focus:outline-none focus:ring-4 focus:ring-white/30"
@@ -91,7 +91,7 @@ const ObservationButton: React.FC = () => {
                       key={option.value}
                       onClick={() => setLevel(option.value as typeof level)}
                       className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all ${level === option.value
-                        ? 'bg-blue-500 text-white shadow-md'
+                        ? 'bg-orange-500 text-white shadow-md'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                     >
@@ -114,7 +114,7 @@ const ObservationButton: React.FC = () => {
                   placeholder={recordMode === 'stress'
                     ? '不安に思ったことの内容を記録してください'
                     : '良かったことの内容を記録してください'}
-                  className={`w-full p-3.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${error ? 'border-red-500' : 'border-gray-300'
+                  className={`w-full p-3.5 border rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${error ? 'border-red-500' : 'border-gray-300'
                     }`}
                   rows={5}
                 />
@@ -133,7 +133,7 @@ const ObservationButton: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-blue-600 shadow-md"
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-xl text-sm font-medium hover:from-orange-700 hover:to-orange-600 shadow-md"
                 >
                   記録する
                 </button>

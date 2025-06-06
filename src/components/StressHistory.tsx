@@ -73,7 +73,7 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
     } else {
       switch (level) {
         case 'big': return 'bg-emerald-400';
-        case 'medium': return 'bg-blue-400';
+        case 'medium': return 'bg-orange-400';
         case 'small': return 'bg-sky-400';
         default: return 'bg-gray-400';
       }
@@ -91,7 +91,7 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
     } else {
       switch (level) {
         case 'big': return 'text-emerald-600';
-        case 'medium': return 'text-blue-600';
+        case 'medium': return 'text-orange-600';
         case 'small': return 'text-sky-600';
         default: return 'text-gray-600';
       }
@@ -123,12 +123,12 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
           onClick={() => setShowHistory(!showHistory)}
           className="flex items-center gap-1 text-sm font-medium text-gray-900 hover:text-gray-600 transition-colors"
         >
-          <History size={14} className="text-blue-500" />
+          <History size={14} className="text-orange-500" />
           <span>{mode === 'stress' ? '不安に思ったこと履歴' : '良かったこと履歴'}</span>
           {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
-        <div className="flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-full">
-          <span className="text-xs font-medium text-blue-600">
+        <div className="flex items-center gap-1 bg-orange-50 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-medium text-orange-600">
             {format(selectedDate, 'M/d(E)', { locale: ja })}
           </span>
         </div>
@@ -158,9 +158,9 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
                   <span className="text-2xs text-gray-600">大きな</span>
                   <p className="text-base font-semibold text-emerald-600">{stats.big}</p>
                 </div>
-                <div className="bg-blue-50 p-1.5 rounded-lg text-center">
+                <div className="bg-orange-50 p-1.5 rounded-lg text-center">
                   <span className="text-2xs text-gray-600">普通の</span>
-                  <p className="text-base font-semibold text-blue-600">{stats.medium}</p>
+                  <p className="text-base font-semibold text-orange-600">{stats.medium}</p>
                 </div>
                 <div className="bg-sky-50 p-1.5 rounded-lg text-center">
                   <span className="text-2xs text-gray-600">小さな</span>
@@ -190,7 +190,7 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
                   return (
                     <li
                       key={event.id}
-                      className="flex flex-col p-2.5 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors animate-slideInRight border-l-3 border-transparent hover:border-blue-300"
+                      className="flex flex-col p-2.5 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors animate-slideInRight border-l-3 border-transparent hover:border-orange-300"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
@@ -220,7 +220,7 @@ const StressHistory: React.FC<StressHistoryProps> = ({ mode }) => {
 
               {selectedEvents.length > 3 && (
                 <button
-                  className="mt-3 w-full py-1.5 flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 rounded-lg text-xs"
+                  className="mt-3 w-full py-1.5 flex items-center justify-center text-orange-600 hover:text-orange-800 transition-colors bg-orange-50 hover:bg-orange-100 rounded-lg text-xs"
                   onClick={() => setIsExpanded(!isExpanded)}
                 >
                   {isExpanded ? (
