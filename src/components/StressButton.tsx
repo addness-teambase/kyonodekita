@@ -4,7 +4,11 @@ import { useStress } from '../context/StressContext';
 import StressAnimation from './StressAnimation';
 import { Dialog } from '@headlessui/react';
 
-const ObservationButton: React.FC = () => {
+interface ObservationButtonProps {
+  onSubmit?: (content: string) => void;
+}
+
+const ObservationButton: React.FC<ObservationButtonProps> = ({ onSubmit }) => {
   const {
     addStressEvent,
     addGoodThingEvent,
@@ -27,6 +31,11 @@ const ObservationButton: React.FC = () => {
       addStressEvent(level as 'high' | 'medium' | 'low', note);
     } else {
       addGoodThingEvent(level as 'big' | 'medium' | 'small', note);
+    }
+
+    // App.tsxから渡された関数を使って記録を追加
+    if (onSubmit) {
+      onSubmit(note);
     }
 
     setIsOpen(false);

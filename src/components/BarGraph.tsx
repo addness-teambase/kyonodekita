@@ -65,30 +65,20 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
         const days = ['日', '月', '火', '水', '木', '金', '土'];
         return days.map(day => {
             if (mode === 'stress') {
-                const high = Math.floor(Math.random() * 3);
-                const medium = Math.floor(Math.random() * 4);
-                const low = Math.floor(Math.random() * 5);
-                const total = high + medium + low;
-
                 return {
                     day,
-                    high,
-                    medium,
-                    low,
-                    total
+                    high: 0,
+                    medium: 0,
+                    low: 0,
+                    total: 0
                 };
             } else {
-                const big = Math.floor(Math.random() * 3);
-                const medium = Math.floor(Math.random() * 4);
-                const small = Math.floor(Math.random() * 5);
-                const total = big + medium + small;
-
                 return {
                     day,
-                    big,
-                    medium,
-                    small,
-                    total
+                    big: 0,
+                    medium: 0,
+                    small: 0,
+                    total: 0
                 };
             }
         });
@@ -532,14 +522,14 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
                                 {day.date && (
                                     <div className="h-full flex flex-col items-center">
                                         <span className={`text-2xs font-medium ${isToday
-                                                ? 'text-orange-600 font-bold' // 今日の日付のテキスト色
-                                                : wasSelectedBefore
-                                                    ? 'text-orange-600' // 以前に選択された日付
-                                                    : getDay(day.date) === 0
-                                                        ? 'text-red-500'
-                                                        : getDay(day.date) === 6
-                                                            ? 'text-orange-500'
-                                                            : 'text-gray-700'
+                                            ? 'text-orange-600 font-bold' // 今日の日付のテキスト色
+                                            : wasSelectedBefore
+                                                ? 'text-orange-600' // 以前に選択された日付
+                                                : getDay(day.date) === 0
+                                                    ? 'text-red-500'
+                                                    : getDay(day.date) === 6
+                                                        ? 'text-orange-500'
+                                                        : 'text-gray-700'
                                             }`}>
                                             {format(day.date, 'd')}
                                         </span>

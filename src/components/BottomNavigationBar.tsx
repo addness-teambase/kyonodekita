@@ -1,9 +1,9 @@
 import React from 'react';
-import { Home, MessageCircle, Edit, Calendar } from 'lucide-react';
+import { Home, MessageCircle, Edit, Calendar, BarChart2 } from 'lucide-react';
 
 interface BottomNavigationBarProps {
-    activeTab: 'home' | 'chat' | 'record' | 'calendar';
-    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar') => void;
+    activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'graph';
+    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'graph') => void;
 }
 
 const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
@@ -22,15 +22,6 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
             </button>
 
             <button
-                onClick={() => onTabChange('chat')}
-                className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'chat' ? 'text-orange-500' : 'text-gray-500'
-                    }`}
-            >
-                <MessageCircle size={20} />
-                <span className="text-xs mt-1">チャット</span>
-            </button>
-
-            <button
                 onClick={() => onTabChange('record')}
                 className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'record' ? 'text-orange-500' : 'text-gray-500'
                     }`}
@@ -46,6 +37,24 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
             >
                 <Calendar size={20} />
                 <span className="text-xs mt-1">カレンダー</span>
+            </button>
+
+            <button
+                onClick={() => onTabChange('graph')}
+                className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'graph' ? 'text-orange-500' : 'text-gray-500'
+                    }`}
+            >
+                <BarChart2 size={20} />
+                <span className="text-xs mt-1">グラフ</span>
+            </button>
+
+            <button
+                onClick={() => onTabChange('chat')}
+                className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'chat' ? 'text-orange-500' : 'text-gray-500'
+                    }`}
+            >
+                <MessageCircle size={20} />
+                <span className="text-xs mt-1">チャット</span>
             </button>
         </div>
     );

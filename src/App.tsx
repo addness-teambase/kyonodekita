@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Smile, Brain, LogOut, User, Calendar as CalendarIcon, Search, Image, MessageSquare, Gift, Bell, Settings, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Menu, Smile, Brain, LogOut, User, Calendar as CalendarIcon, PlusCircle, Clock } from 'lucide-react';
 import { StressProvider, useStress } from './context/StressContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ObservationButton from './components/StressButton';
@@ -9,183 +9,123 @@ import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
 import BottomNavigationBar from './components/BottomNavigationBar';
 
+// 記録データの型定義
+interface RecordEntry {
+  id: string;
+  date: Date;
+  content: string;
+  type: 'stress' | 'good';
+  createdAt: Date;
+}
+
 function AppContent() {
   const { recordMode, setRecordMode } = useStress();
   const { user, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar'>('home');
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('ステータスメッセージを入力');
-  const [isEditingStatus, setIsEditingStatus] = useState(false);
-  const statusInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'graph'>('home');
+
+  // 記録データのステート
+  const [todayRecords, setTodayRecords] = useState<RecordEntry[]>([]);
+
+  // 記録を追加する関数
+  const addRecord = (content: string) => {
+    const newRecord: RecordEntry = {
+      id: Date.now().toString(),
+      date: new Date(),
+      content,
+      type: recordMode,
+      createdAt: new Date()
+    };
+
+    setTodayRecords(prev => [newRecord, ...prev]);
+  };
+
+  // 今日の日付の記録だけをフィルタリングする関数
+  const filterTodayRecords = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return todayRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      recordDate.setHours(0, 0, 0, 0);
+      return recordDate.getTime() === today.getTime();
+    });
+  };
 
   // 現在の日付を取得
   const today = new Date();
   const formattedDate = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
 
-  // ユーザーメニューの外側をクリックしたときに閉じる
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (showUserMenu && !(event.target as Element).closest('.user-menu-container')) {
-        setShowUserMenu(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showUserMenu]);
+  // 今日の記録
+  const todaysFilteredRecords = filterTodayRecords();
+  const hasRecords = todaysFilteredRecords.length > 0;
 
-  // ステータスメッセージ編集時にフォーカスを当てる
-  useEffect(() => {
-    if (isEditingStatus && statusInputRef.current) {
-      statusInputRef.current.focus();
-    }
-  }, [isEditingStatus]);
-
-  // 友達リストのダミーデータ
-  const friendsList = [
-    { id: 1, name: '山田太郎', status: 'オンライン', lastActive: '1時間前' },
-    { id: 2, name: '佐藤花子', status: 'オフライン', lastActive: '3時間前' },
-    { id: 3, name: '鈴木一郎', status: 'オンライン', lastActive: '30分前' },
-  ];
-
-  // サービスリストのダミーデータ
-  const servicesList = [
-    { id: 1, name: '記録', icon: <MessageSquare size={24} className="text-orange-500" /> },
-    { id: 2, name: 'カレンダー', icon: <CalendarIcon size={24} className="text-blue-500" /> },
-    { id: 3, name: '通知設定', icon: <Bell size={24} className="text-yellow-500" /> },
-    { id: 4, name: '設定', icon: <Settings size={24} className="text-gray-500" /> }
-  ];
+  // 記録時間をフォーマットする関数
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  };
 
   // タブごとのコンテンツをレンダリングする関数
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
         return (
-          <div className="flex flex-col items-center space-y-4">
-            {/* プロフィールセクション */}
-            <div className="w-full bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-start">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center overflow-hidden">
-                    {user?.photoURL ? (
-                      <img src={user.photoURL} alt="プロフィール" className="w-full h-full object-cover" />
-                    ) : (
-                      <User size={32} className="text-orange-500" />
-                    )}
+          <div className="flex flex-col items-center">
+            {/* シンプルなウェルカムカード */}
+            <div className="w-full bg-white rounded-lg shadow-sm p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center mr-3">
+                    <User size={20} className="text-orange-500" />
                   </div>
-                  <button
-                    className="absolute bottom-0 right-0 bg-gray-200 rounded-full p-1"
-                    onClick={() => alert('プロフィール画像を変更する機能は開発中です')}
-                  >
-                    <Image size={12} />
-                  </button>
-                </div>
-
-                <div className="ml-4 flex-1">
-                  <h2 className="text-xl font-bold text-gray-800">
-                    {user ? user.username : 'ゲスト'}
-                  </h2>
-
-                  {isEditingStatus ? (
-                    <div className="flex items-center mt-1">
-                      <input
-                        ref={statusInputRef}
-                        type="text"
-                        value={statusMessage}
-                        onChange={(e) => setStatusMessage(e.target.value)}
-                        className="text-sm text-gray-600 border-b border-gray-300 focus:outline-none focus:border-orange-500 w-full"
-                        onBlur={() => setIsEditingStatus(false)}
-                        onKeyDown={(e) => e.key === 'Enter' && setIsEditingStatus(false)}
-                      />
-                    </div>
-                  ) : (
-                    <p
-                      className="text-sm text-gray-600 mt-1 cursor-pointer"
-                      onClick={() => setIsEditingStatus(true)}
-                    >
-                      {statusMessage}
+                  <div>
+                    <h2 className="text-base font-medium text-gray-800">
+                      {user ? user.username : 'ゲスト'}さん
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      今日も頑張りましょう！
                     </p>
-                  )}
+                  </div>
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  {formattedDate}
                 </div>
               </div>
-
-              {/* 設定ボタンエリア */}
-              <div className="mt-4 flex items-center space-x-2">
-                <button className="flex-1 text-sm bg-gray-100 py-2 px-3 rounded-md text-gray-700 flex items-center justify-center">
-                  <Image size={16} className="mr-2" />
-                  <span>BGMを設定</span>
-                </button>
-              </div>
             </div>
 
-            {/* 検索バー */}
-            <div className="w-full bg-gray-100 rounded-lg p-3 flex items-center">
-              <Search size={18} className="text-gray-400 mr-2" />
-              <span className="text-gray-400 text-sm">検索</span>
-            </div>
-
-            {/* 友達リスト */}
+            {/* 記録サマリー */}
             <div className="w-full bg-white rounded-lg shadow-sm p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-medium text-gray-800">友だちリスト</h3>
-                <button className="text-sm text-orange-500">すべて見る</button>
-              </div>
+              <h3 className="text-base font-medium text-gray-800 mb-3">今日の記録</h3>
 
-              <div className="space-y-3">
-                {friendsList.map(friend => (
-                  <div key={friend.id} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                        <User size={18} className="text-gray-500" />
+              {hasRecords ? (
+                <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+                  {todaysFilteredRecords.map(record => (
+                    <div key={record.id} className={`p-3 rounded-lg ${record.type === 'good' ? 'bg-green-50 border-l-4 border-green-400' : 'bg-orange-50 border-l-4 border-orange-400'}`}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`text-xs font-medium ${record.type === 'good' ? 'text-green-600' : 'text-orange-600'}`}>
+                          {record.type === 'good' ? '良かったこと' : '不安なこと'}
+                        </span>
+                        <span className="text-xs text-gray-500 flex items-center">
+                          <Clock size={12} className="mr-1" />
+                          {formatTime(record.createdAt)}
+                        </span>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium">{friend.name}</p>
-                        <p className="text-xs text-gray-500">{friend.status} · {friend.lastActive}</p>
-                      </div>
+                      <p className="text-sm text-gray-700">{record.content}</p>
                     </div>
-                    <button className="text-orange-500">
-                      <MessageSquare size={18} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* サービス */}
-            <div className="w-full bg-white rounded-lg shadow-sm p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-medium text-gray-800">サービス</h3>
-                <button className="text-sm text-orange-500">すべて見る</button>
-              </div>
-
-              <div className="grid grid-cols-4 gap-4">
-                {servicesList.map(service => (
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-500 mb-3">今日はまだ記録がありません</p>
                   <button
-                    key={service.id}
-                    className="flex flex-col items-center"
-                    onClick={() => {
-                      if (service.name === '記録') setActiveTab('record');
-                      if (service.name === 'カレンダー') setActiveTab('calendar');
-                    }}
+                    onClick={() => setActiveTab('record')}
+                    className="inline-flex items-center justify-center gap-1.5 bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium"
                   >
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-1">
-                      {service.icon}
-                    </div>
-                    <span className="text-xs text-gray-700">{service.name}</span>
+                    <PlusCircle size={16} />
+                    <span>記録を始める</span>
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 今日のヒント */}
-            <div className="w-full bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-medium text-gray-800 mb-2">今日のヒント</h3>
-              <p className="text-sm text-gray-600">
-                毎日の記録を続けることで、自分の気持ちの変化やパターンを見つけることができます。
-                「記録」タブから今日の気持ちを記録してみましょう。
-              </p>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -232,9 +172,32 @@ function AppContent() {
                 </div>
               </div>
 
-              <div className="flex justify-center">
-                <ObservationButton />
+              <div className="flex justify-center mb-5">
+                <ObservationButton onSubmit={addRecord} />
               </div>
+
+              {/* 今日の記録一覧 */}
+              {hasRecords && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">今日の記録一覧</h3>
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+                    {todaysFilteredRecords.map(record => (
+                      <div key={record.id} className={`p-3 rounded-lg ${record.type === 'good' ? 'bg-green-50 border-l-4 border-green-400' : 'bg-orange-50 border-l-4 border-orange-400'}`}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className={`text-xs font-medium ${record.type === 'good' ? 'text-green-600' : 'text-orange-600'}`}>
+                            {record.type === 'good' ? '良かったこと' : '不安なこと'}
+                          </span>
+                          <span className="text-xs text-gray-500 flex items-center">
+                            <Clock size={12} className="mr-1" />
+                            {formatTime(record.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{record.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -251,9 +214,19 @@ function AppContent() {
 
               <StressHistory mode={recordMode} />
             </div>
+          </div>
+        );
+      case 'graph':
+        return (
+          <div className="flex flex-col items-center">
+            <div className="w-full bg-white rounded-lg shadow-sm p-4 mb-4">
+              <h2 className="text-lg font-medium text-gray-800 mb-3">
+                グラフ表示
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                気分の変化をグラフで確認できます
+              </p>
 
-            <div className="w-full bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-medium text-gray-800 mb-2">グラフ表示</h3>
               <BarGraph mode={recordMode} />
             </div>
           </div>
@@ -273,34 +246,14 @@ function AppContent() {
             きょうのできた
           </h1>
           {user && (
-            <div className="relative user-menu-container">
-              <button
-                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"
-                onClick={() => setShowUserMenu(!showUserMenu)}
-              >
-                <User size={18} className="text-white" />
-              </button>
-
-              {/* ユーザーメニュー */}
-              {showUserMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg p-2 w-48">
-                  <div className="flex items-center p-2 border-b border-gray-100">
-                    <User size={16} className="text-gray-500 mr-2" />
-                    <span className="text-sm font-medium">{user.username}</span>
-                  </div>
-                  <button
-                    className="flex items-center w-full p-2 text-left hover:bg-gray-50 rounded-md"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      setShowLogoutConfirm(true);
-                    }}
-                  >
-                    <LogOut size={16} className="text-red-500 mr-2" />
-                    <span className="text-sm text-red-500">ログアウト</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              onClick={() => setShowLogoutConfirm(true)}
+              aria-label="ログアウト"
+              title="ログアウト"
+            >
+              <User size={18} className="text-white" />
+            </button>
           )}
         </div>
       </header>

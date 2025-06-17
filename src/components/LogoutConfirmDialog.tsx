@@ -50,8 +50,8 @@ const LogoutConfirmDialog: React.FC<LogoutConfirmDialogProps> = ({
                                 </div>
 
                                 <div className="flex items-center justify-center mb-4">
-                                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500/10 to-blue-600/10">
-                                        <LogOut className="h-8 w-8 text-blue-500" />
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-orange-500/10 to-orange-600/10">
+                                        <LogOut className="h-8 w-8 text-orange-500" />
                                     </div>
                                 </div>
 
@@ -80,7 +80,7 @@ const LogoutConfirmDialog: React.FC<LogoutConfirmDialogProps> = ({
                                     </button>
                                     <button
                                         type="button"
-                                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-2.5 text-sm font-medium text-white hover:from-blue-700 hover:to-blue-600 transition-colors shadow-sm"
+                                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent bg-gradient-to-r from-orange-500 to-orange-600 px-5 py-2.5 text-sm font-medium text-white hover:from-orange-600 hover:to-orange-700 transition-colors shadow-sm"
                                         onClick={onConfirm}
                                     >
                                         <LogOut size={16} />
