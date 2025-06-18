@@ -90,7 +90,7 @@ const BarGraph: React.FC<BarGraphProps> = ({ mode }) => {
             if (showTotal) {
                 return Math.max(dailyStats.total, 1);
             } else {
-                return Math.max(...Object.values({ ...dailyStats, total: 0, highPercent: 0, mediumPercent: 0, lowPercent: 0, bigPercent: 0, smallPercent: 0, mediumPercent: 0, smallPercent: 0 }), 1);
+                return Math.max(...Object.values({ ...dailyStats, total: 0, highPercent: 0, mediumPercent: 0, lowPercent: 0, bigPercent: 0, smallPercent: 0 }), 1);
             }
         } else if (selectedView === 'weekly') {
             if (showTotal) {
