@@ -69,7 +69,7 @@ interface RecordContextType {
     childInfo: ChildInfo | null;
     activeChildId: string | null;
     setActiveChildId: (id: string | null) => void;
-    addChild: (name: string, age: number, birthdate?: string, gender?: 'male' | 'female') => void;
+    addChild: (name: string, age: number, birthdate?: string, gender?: 'male' | 'female') => string;
     updateChildInfo: (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female') => void;
     removeChild: (id: string) => void;
     // 今日が誕生日かどうか

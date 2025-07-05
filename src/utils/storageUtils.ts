@@ -1,8 +1,7 @@
-import { ChildObservation, UserPreferences } from '../types';
+import { ChildObservation } from '../types';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const STORAGE_KEY = 'child-observation-records';
-const PREFS_KEY = 'child-observation-preferences';
 
 const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
 
@@ -28,7 +27,7 @@ export const formatTime = (timestamp: string): string => {
   const date = new Date(timestamp);
   const hours = date.getHours().toString().padStart(2, '0');
   const minutes = date.getMinutes().toString().padStart(2, '0');
-  
+
   return `${hours}:${minutes}`;
 };
 
@@ -54,7 +53,7 @@ export const getStatusColor = (status: string): string => {
   }
 };
 
-export const generateDiarySummary = async (stressEvents: any[], goodThingEvents: any[]): Promise<string> => {
+export const generateDiarySummary = async (stressEvents: ChildObservation[], goodThingEvents: ChildObservation[]): Promise<string> => {
   if (stressEvents.length === 0 && goodThingEvents.length === 0) {
     return '今日の記録\n\n今日はまだ記録がありません。';
   }
@@ -95,7 +94,7 @@ ${goodThingEvents.map(e => `- ${formatTime(e.timestamp)}: ${e.level}
   }
 };
 
-export const getMotivationalMessage = async (events: any[]): Promise<string> => {
+export const getMotivationalMessage = async (events: ChildObservation[]): Promise<string> => {
   if (events.length === 0) return '';
 
   try {
@@ -124,7 +123,7 @@ ${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
   }
 };
 
-export const getPraiseMessage = async (events: any[]): Promise<string> => {
+export const getPraiseMessage = async (events: ChildObservation[]): Promise<string> => {
   if (events.length === 0) return '';
 
   try {
@@ -153,7 +152,7 @@ ${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
   }
 };
 
-const defaultSummary = (stressEvents: any[], goodThingEvents: any[]): string => {
+const defaultSummary = (stressEvents: ChildObservation[], goodThingEvents: ChildObservation[]): string => {
   let summary = '今日の記録\n\n';
 
   const allEvents = [...stressEvents, ...goodThingEvents]

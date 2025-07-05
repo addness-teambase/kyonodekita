@@ -2,24 +2,16 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, PlusCircle, Calendar as CalendarIcon, Trash2, Clock } from 'lucide-react';
 import { format, isSameDay, isToday, eachDayOfInterval, startOfMonth, endOfMonth, getDay, subMonths, addMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { useRecord, CalendarEvent } from '../context/RecordContext';
+import { useRecord } from '../context/RecordContext';
 import { Dialog } from '@headlessui/react';
 
-// 予定の型定義
-interface EventItem {
-    id: string;
-    date: Date;
-    title: string;
-    description?: string;
-    time?: string;
-}
+
 
 const CalendarView: React.FC = () => {
     const {
         recordEvents,
         selectedDate,
         setSelectedDate,
-        calendarEvents,
         addCalendarEvent,
         deleteCalendarEvent,
         getCalendarEventsForDate
@@ -126,7 +118,7 @@ const CalendarView: React.FC = () => {
                 {/* カテゴリー別の記録件数 */}
                 <div className="grid grid-cols-4 gap-2 mb-4">
                     <div className="bg-emerald-50 p-2 rounded-lg text-center">
-                        <span className="text-2xs text-gray-600">できたこと</span>
+                        <span className="text-2xs text-gray-600">できた</span>
                         <p className="text-base font-semibold text-emerald-600">{categoryCounts.achievement}</p>
                     </div>
                     <div className="bg-sky-50 p-2 rounded-lg text-center">

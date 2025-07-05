@@ -3,10 +3,73 @@
 @tailwind utilities;
 
 /* スクロールの挙動を改善 */
-html, body {
+html,
+body {
   scroll-behavior: smooth;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+}
+
+/* すべてのボタンとクリック可能な要素のタップハイライトを無効化 */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* テキスト入力欄だけは選択可能に */
+input,
+textarea {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* すべてのボタンとクリック可能な要素のフォーカスアウトラインを無効化 */
+button,
+[role="button"],
+[onclick],
+[tabindex] {
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+/* より強力なタップハイライト無効化 */
+button *,
+div[onclick] *,
+[role="button"] *,
+span[onclick] * {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: none !important;
+}
+
+/* ボタンのみpointer-eventsを有効化 */
+button,
+[role="button"],
+[onclick],
+[tabindex] {
+  pointer-events: auto !important;
+}
+
+/* 特定のクラスに対するさらなる対策 */
+.bg-amber-50,
+.bg-amber-100,
+.border-amber-200,
+.border-amber-300 {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* アイコンとテキストのpointer-eventsを無効化 */
+svg,
+span,
+.lucide {
+  pointer-events: none !important;
 }
 
 /* スクロールバーのカスタマイズ */

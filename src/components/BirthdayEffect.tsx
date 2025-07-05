@@ -3,9 +3,15 @@ import confetti from 'canvas-confetti';
 
 interface BirthdayEffectProps {
     childName: string;
+    childGender?: 'male' | 'female';
 }
 
-const BirthdayEffect: React.FC<BirthdayEffectProps> = ({ childName }) => {
+// 性別に応じて適切な敬称を返す関数
+const getChildSuffix = (gender?: 'male' | 'female'): string => {
+    return gender === 'male' ? 'くん' : 'ちゃん';
+};
+
+const BirthdayEffect: React.FC<BirthdayEffectProps> = ({ childName, childGender }) => {
     const [visible, setVisible] = useState(true);
 
     useEffect(() => {
@@ -62,7 +68,7 @@ const BirthdayEffect: React.FC<BirthdayEffectProps> = ({ childName }) => {
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
             <div className="bg-white/90 shadow-lg rounded-xl p-4 text-center">
                 <p className="text-base text-gray-700">
-                    今日は<span className="font-bold text-orange-500">{childName}</span>ちゃんの誕生日です。おめでとうございます。
+                    今日は<span className="font-bold text-orange-500">{childName}</span>{getChildSuffix(childGender)}の誕生日です。おめでとうございます。
                 </p>
             </div>
         </div>
