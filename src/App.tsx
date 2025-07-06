@@ -1267,8 +1267,8 @@ function InitialChildSetup() {
               onClick={handleSubmit}
               disabled={!isFormValid || isSubmitting}
               className={`w-full py-4 px-6 rounded-xl text-lg font-medium shadow-sm focus:outline-none ${isFormValid && !isSubmitting
-                ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
