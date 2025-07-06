@@ -891,7 +891,7 @@ function AppContent() {
                       }}
                     >
                       <option value="">年</option>
-                      {Array.from({ length: 40 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                      {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map(year => (
                         <option key={year} value={year}>{year}</option>
                       ))}
                     </select>
@@ -1168,7 +1168,7 @@ function InitialChildSetup() {
                   disabled={isSubmitting}
                 >
                   <option value="">年</option>
-                  {Array.from({ length: 20 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                  {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map(year => (
                     <option key={year} value={year}>{year}</option>
                   ))}
                 </select>
@@ -1267,8 +1267,8 @@ function InitialChildSetup() {
               onClick={handleSubmit}
               disabled={!isFormValid || isSubmitting}
               className={`w-full py-4 px-6 rounded-xl text-lg font-medium shadow-sm focus:outline-none ${isFormValid && !isSubmitting
-                  ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
