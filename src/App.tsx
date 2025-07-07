@@ -462,28 +462,28 @@ function AppContent() {
       case 'chat':
         return (
           <div className="flex flex-col h-full">
-            {/* チャットヘッダー */}
+            {/* 先生相談ヘッダー */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
               <h2 className="text-lg font-medium text-gray-800 mb-1">
-                AIチャット
+                先生に相談
               </h2>
               <p className="text-sm text-gray-600">
-                {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}` : 'お子さま'}の成長について相談できます
+                {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}` : 'お子さま'}の発達や子育てについて、専門的なアドバイスを受けられます
               </p>
             </div>
 
             {/* チャットメッセージエリア */}
             <div className="flex-1 bg-white rounded-lg shadow-sm p-4 mb-4 flex flex-col">
               <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                {/* システムメッセージ */}
+                {/* 先生からのメッセージ */}
                 <div className="flex items-start space-x-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">AI</span>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center">
+                    <span className="text-white text-sm font-medium">先生</span>
                   </div>
                   <div className="flex-1">
                     <div className="bg-gray-50 rounded-2xl rounded-tl-md px-4 py-3">
                       <p className="text-sm text-gray-800">
-                        こんにちは！お子さまの成長や日々の記録について、何でもお気軽にご相談ください。
+                        こんにちは！私は子育て支援の専門家です。お子さまの成長や発達、日々の子育てのお悩みについて、いつでもお気軽にご相談ください。記録された内容も参考にしながら、具体的なアドバイスをさせていただきます。
                       </p>
                     </div>
                     <p className="text-xs text-gray-500 mt-1 ml-4">今</p>
@@ -495,7 +495,7 @@ function AppContent() {
                   <div className="flex-1 text-right">
                     <div className="inline-block bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-3 max-w-xs">
                       <p className="text-sm">
-                        最近よく泣いてしまうのですが、どう対応すればいいでしょうか？
+                        最近よく夜泣きするようになったのですが、何か原因があるのでしょうか？
                       </p>
                     </div>
                     <p className="text-xs text-gray-500 mt-1 mr-4">2分前</p>
@@ -505,17 +505,21 @@ function AppContent() {
                   </div>
                 </div>
 
-                {/* AIレスポンスの例 */}
+                {/* 先生からの回答例 */}
                 <div className="flex items-start space-x-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">AI</span>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center">
+                    <span className="text-white text-sm font-medium">先生</span>
                   </div>
                   <div className="flex-1">
                     <div className="bg-gray-50 rounded-2xl rounded-tl-md px-4 py-3">
                       <p className="text-sm text-gray-800">
-                        お子さまが泣いてしまう理由はいくつか考えられますね。まず、基本的な欲求（お腹が空いた、眠い、おむつが濡れているなど）をチェックしてみてください。
+                        夜泣きの原因はいくつか考えられます。お子さまの年齢や発達段階によって対応方法が異なりますが、主な原因として以下があります：
                         <br /><br />
-                        また、環境の変化や新しい体験に対する不安も原因となることがあります。記録を見返して、泣く前の状況や時間帯にパターンがないか確認してみるのも良いでしょう。
+                        ・成長期の一時的な睡眠パターンの変化<br />
+                        ・日中の刺激が多すぎる場合<br />
+                        ・夜間の環境（温度、湿度、明るさ）
+                        <br /><br />
+                        記録を確認しながら、パターンを一緒に見つけていきましょう。まずは、夜泣きの時間帯や前後の状況を教えていただけますか？
                       </p>
                     </div>
                     <p className="text-xs text-gray-500 mt-1 ml-4">1分前</p>
@@ -529,7 +533,7 @@ function AppContent() {
                   <div className="flex-1">
                     <input
                       type="text"
-                      placeholder="メッセージを入力..."
+                      placeholder="先生に相談したいことを入力してください..."
                       className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
