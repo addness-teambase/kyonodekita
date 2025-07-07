@@ -239,7 +239,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         const categoryNames = {
             achievement: 'できた！',
             happy: 'うれしい',
-            failure: '失敗',
+            failure: '気になったこと',
             trouble: 'こまった'
         };
         return categoryNames[category];
@@ -357,7 +357,7 @@ export const getMotivationalMessage = async (events: RecordEvent[]): Promise<str
             return `今日は${happyCount}個も嬉しいことがありましたね！素敵な一日ですね！`;
         }
         if (failureCount > 0 || troubleCount > 0) {
-            return `今日は少し大変でしたね。でも、記録することで次はもっと良くなりますよ！`;
+            return `今日は気になることがありましたね。記録することで解決のヒントが見つかりますよ！`;
         }
 
         return '今日も一日お疲れ様でした！';
@@ -371,7 +371,7 @@ const getCategoryNameStatic = (category: RecordCategory): string => {
     const categoryNames = {
         achievement: 'できた！',
         happy: 'うれしい',
-        failure: '失敗',
+        failure: '気になったこと',
         trouble: 'こまった'
     };
     return categoryNames[category];

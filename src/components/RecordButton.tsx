@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Award, Smile, X, AlertTriangle } from 'lucide-react';
+import { Award, Smile, X, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useRecord, RecordCategory } from '../context/RecordContext';
 import RecordAnimation from './RecordAnimation';
 import { Dialog } from '@headlessui/react';
@@ -11,7 +11,7 @@ interface RecordButtonProps {
 const CategoryIcons: Record<RecordCategory, React.ElementType> = {
     achievement: Award,
     happy: Smile,
-    failure: X,
+    failure: HelpCircle,
     trouble: AlertTriangle
 };
 

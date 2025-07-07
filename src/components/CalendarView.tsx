@@ -126,7 +126,7 @@ const CalendarView: React.FC = () => {
                         <p className="text-base font-semibold text-sky-600">{categoryCounts.happy}</p>
                     </div>
                     <div className="bg-amber-50 p-2 rounded-lg text-center">
-                        <span className="text-2xs text-gray-600">できない</span>
+                        <span className="text-2xs text-gray-600">気になった</span>
                         <p className="text-base font-semibold text-amber-600">{categoryCounts.failure}</p>
                     </div>
                     <div className="bg-rose-50 p-2 rounded-lg text-center">

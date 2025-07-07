@@ -89,7 +89,7 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
                     }`}>
                     <MessageCircle size={20} />
                 </div>
-                <span className="text-xs mt-1 font-medium">チャット</span>
+                <span className="text-xs mt-1 font-medium">相談</span>
             </button>
         </div>
     );

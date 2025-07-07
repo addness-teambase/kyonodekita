@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, ChevronDown, ChevronUp, Trash2, History, X, Award, Smile, AlertTriangle } from 'lucide-react';
+import { Clock, ChevronDown, ChevronUp, Trash2, History, X, Award, Smile, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useRecord, RecordCategory } from '../context/RecordContext';
 import { formatTime } from '../utils/storageUtils';
 import { format, isSameDay, isToday } from 'date-fns';
@@ -41,7 +41,7 @@ const RecordHistory: React.FC = () => {
             case 'happy':
                 return <Smile size={14} />;
             case 'failure':
-                return <X size={14} />;
+                return <HelpCircle size={14} />;
             case 'trouble':
                 return <AlertTriangle size={14} />;
             default:

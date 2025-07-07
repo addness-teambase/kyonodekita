@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle } from 'lucide-react';
+import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle } from 'lucide-react';
 import { RecordProvider, useRecord, RecordCategory } from './context/RecordContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import RecordButton from './components/RecordButton';
@@ -252,7 +252,7 @@ function AppContent() {
         };
       case 'failure':
         return {
-          icon: <X size={16} className="text-amber-600" />,
+          icon: <HelpCircle size={16} className="text-amber-600" />,
           bgColor: 'bg-amber-50',
           borderColor: 'border-amber-400',
           textColor: 'text-amber-600'
@@ -605,10 +605,10 @@ function AppContent() {
                 >
                   <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mb-3 border-2 border-amber-200"
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <X size={24} className="text-amber-600" />
+                    <HelpCircle size={24} className="text-amber-600" />
                   </div>
-                  <span className="text-sm font-bold text-gray-800">できなかったこと</span>
-                  <span className="text-xs text-gray-500 mt-1">チャレンジ</span>
+                  <span className="text-sm font-bold text-gray-800">気になったこと</span>
+                  <span className="text-xs text-gray-500 mt-1">心配・疑問</span>
                 </button>
 
                 <button
