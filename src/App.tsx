@@ -58,7 +58,7 @@ function AppContent() {
     updateChildInfo,
     removeChild
   } = useRecord();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth'>('home');
   const [isChildSettingsOpen, setIsChildSettingsOpen] = useState(false);
@@ -66,10 +66,12 @@ function AppContent() {
   const [childAge, setChildAge] = useState('');
   const [childBirthdate, setChildBirthdate] = useState('');
   const [childGender, setChildGender] = useState<'male' | 'female' | ''>('');
+  const [childAvatarImage, setChildAvatarImage] = useState<string>('');
   const [editChildId, setEditChildId] = useState<string | null>(null);
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [isParentSettingsOpen, setIsParentSettingsOpen] = useState(false);
   const [parentName, setParentName] = useState(user?.username || '');
+  const [parentAvatarImage, setParentAvatarImage] = useState<string>(user?.avatarImage || '');
 
   // 編集する子供が変わったときにフォームを更新
   useEffect(() => {
@@ -79,12 +81,14 @@ function AppContent() {
         setChildName(childToEdit.name);
         setChildBirthdate(childToEdit.birthdate || '');
         setChildGender(childToEdit.gender || '');
+        setChildAvatarImage(childToEdit.avatarImage || '');
       }
     } else {
       // 新規追加の場合はフォームをクリア
       setChildName('');
       setChildBirthdate('');
       setChildGender('');
+      setChildAvatarImage('');
     }
   }, [editChildId, children]);
 
@@ -131,6 +135,56 @@ function AppContent() {
     setRecordError('');
   };
 
+  // 画像をBase64エンコードする関数
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // ファイルサイズチェック（5MB以下）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください');
+        return;
+      }
+
+      // 画像形式チェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setChildAvatarImage(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 保護者の画像をBase64エンコードする関数
+  const handleParentImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // ファイルサイズチェック（5MB以下）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください');
+        return;
+      }
+      
+      // 画像形式チェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setParentAvatarImage(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // 子供情報を保存
   const saveChildInfo = () => {
     const age = childBirthdate ? calculateAge(childBirthdate) : 0;
@@ -142,7 +196,8 @@ function AppContent() {
           childName.trim(),
           age,
           childBirthdate,
-          childGender || undefined
+          childGender || undefined,
+          childAvatarImage || undefined
         );
       } else {
         // 新しい子供を追加
@@ -150,7 +205,8 @@ function AppContent() {
           childName.trim(),
           age,
           childBirthdate,
-          childGender || undefined
+          childGender || undefined,
+          childAvatarImage || undefined
         );
         // 新しい子供を選択状態にする
         setActiveChildId(newChildId);
@@ -237,8 +293,16 @@ function AppContent() {
             <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center flex-1 min-w-0">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mr-4 flex-shrink-0">
-                    <span className="text-2xl">👋</span>
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mr-4 flex-shrink-0 overflow-hidden">
+                    {user?.avatarImage ? (
+                      <img 
+                        src={user.avatarImage} 
+                        alt="保護者アイコン" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl">👋</span>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-xl font-bold text-gray-800 leading-tight">
@@ -253,6 +317,7 @@ function AppContent() {
                   <button
                     onClick={() => {
                       setParentName(user?.username || '');
+                      setParentAvatarImage(user?.avatarImage || '');
                       setIsParentSettingsOpen(true);
                     }}
                     className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center focus:outline-none"
@@ -268,8 +333,16 @@ function AppContent() {
                 <div className="mt-6 pt-5 border-t border-gray-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center mr-4">
-                        <span className="text-xl">{childInfo.gender === 'male' ? '👦' : '👧'}</span>
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center mr-4 overflow-hidden">
+                        {childInfo.avatarImage ? (
+                          <img
+                            src={childInfo.avatarImage}
+                            alt={`${childInfo.name}のアイコン`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xl">{childInfo.gender === 'male' ? '👦' : '👧'}</span>
+                        )}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -715,13 +788,21 @@ function AppContent() {
           </h1>
           {user && (
             <button
-              className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center focus:outline-none"
+              className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center focus:outline-none overflow-hidden"
               style={{ WebkitTapHighlightColor: 'transparent' }}
               onClick={() => setShowLogoutConfirm(true)}
               aria-label="ログアウト"
               title="ログアウト"
             >
-              <User size={18} className="text-pink-600" />
+              {user.avatarImage ? (
+                <img 
+                  src={user.avatarImage} 
+                  alt="保護者アイコン" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User size={18} className="text-pink-600" />
+              )}
             </button>
           )}
         </div>
@@ -776,11 +857,19 @@ function AppContent() {
                     }}
                   >
                     <div className="flex items-center">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center mr-3 ${child.gender === 'male' ? 'bg-blue-100' : 'bg-pink-100'
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center mr-3 overflow-hidden ${child.gender === 'male' ? 'bg-blue-100' : 'bg-pink-100'
                         }`}>
-                        <span className="text-lg">
-                          {child.gender === 'male' ? '👦' : '👧'}
-                        </span>
+                        {child.avatarImage ? (
+                          <img
+                            src={child.avatarImage}
+                            alt={`${child.name}のアイコン`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-lg">
+                            {child.gender === 'male' ? '👦' : '👧'}
+                          </span>
+                        )}
                       </div>
                       <div className="text-left">
                         <div className="font-medium text-gray-800">{child.name}{getChildSuffix(child.gender)}</div>
@@ -859,6 +948,52 @@ function AppContent() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                   placeholder="例：たろう"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  アイコン写真
+                </label>
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                    {childAvatarImage ? (
+                      <img
+                        src={childAvatarImage}
+                        alt="アイコン"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl text-gray-400">📷</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="avatar-upload"
+                    />
+                    <label
+                      htmlFor="avatar-upload"
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none cursor-pointer"
+                    >
+                      📱 写真を選択
+                    </label>
+                    {childAvatarImage && (
+                      <button
+                        type="button"
+                        onClick={() => setChildAvatarImage('')}
+                        className="ml-2 text-sm text-red-600 hover:text-red-800"
+                      >
+                        削除
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  スマホのカメラフォルダーから写真を選択できます（5MB以下）
+                </p>
               </div>
 
               {childBirthdate && (
@@ -1040,6 +1175,52 @@ function AppContent() {
                   placeholder="保護者名を入力"
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  アイコン写真
+                </label>
+                <div className="flex items-center space-x-4">
+                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                    {parentAvatarImage ? (
+                      <img 
+                        src={parentAvatarImage} 
+                        alt="保護者アイコン" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl text-gray-400">📷</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleParentImageUpload}
+                      className="hidden"
+                      id="parent-avatar-upload"
+                    />
+                    <label
+                      htmlFor="parent-avatar-upload"
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none cursor-pointer"
+                    >
+                      📱 写真を選択
+                    </label>
+                    {parentAvatarImage && (
+                      <button
+                        type="button"
+                        onClick={() => setParentAvatarImage('')}
+                        className="ml-2 text-sm text-red-600 hover:text-red-800"
+                      >
+                        削除
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  スマホのカメラフォルダーから写真を選択できます（5MB以下）
+                </p>
+              </div>
             </div>
 
             <div className="mt-8 flex gap-3">
@@ -1057,9 +1238,10 @@ function AppContent() {
                 className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl shadow-sm focus:outline-none"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
                 onClick={() => {
-                  // 保護者名を更新する処理（実際のアプリでは適切な更新処理を実装）
-                  console.log('保護者名を更新:', parentName);
-                  setIsParentSettingsOpen(false);
+                  if (parentName.trim()) {
+                    updateUser(parentName.trim(), parentAvatarImage || undefined);
+                    setIsParentSettingsOpen(false);
+                  }
                 }}
               >
                 保存
@@ -1082,7 +1264,33 @@ function InitialChildSetup() {
   const [childName, setChildName] = useState('');
   const [childBirthdate, setChildBirthdate] = useState('');
   const [childGender, setChildGender] = useState<'male' | 'female' | ''>('');
+  const [childAvatarImage, setChildAvatarImage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 画像をBase64エンコードする関数
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // ファイルサイズチェック（5MB以下）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください');
+        return;
+      }
+
+      // 画像形式チェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setChildAvatarImage(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!childName.trim() || !childBirthdate || !childGender) {
@@ -1097,7 +1305,8 @@ function InitialChildSetup() {
         childName.trim(),
         age,
         childBirthdate,
-        childGender
+        childGender,
+        childAvatarImage || undefined
       );
       setActiveChildId(newChildId);
     } catch (error) {
@@ -1146,6 +1355,58 @@ function InitialChildSetup() {
                 placeholder="例：たろう"
                 disabled={isSubmitting}
               />
+            </div>
+
+            {/* アイコン写真 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                アイコン写真
+              </label>
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                  {childAvatarImage ? (
+                    <img
+                      src={childAvatarImage}
+                      alt="アイコン"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl text-gray-400">📷</span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="avatar-upload-initial"
+                    disabled={isSubmitting}
+                  />
+                  <label
+                    htmlFor="avatar-upload-initial"
+                    className={`inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium ${isSubmitting
+                        ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                        : 'text-gray-700 bg-white hover:bg-gray-50 cursor-pointer'
+                      }`}
+                  >
+                    📱 写真を選択
+                  </label>
+                  {childAvatarImage && (
+                    <button
+                      type="button"
+                      onClick={() => setChildAvatarImage('')}
+                      className="ml-2 text-sm text-red-600 hover:text-red-800"
+                      disabled={isSubmitting}
+                    >
+                      削除
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                スマホのカメラフォルダーから写真を選択できます（5MB以下）
+              </p>
             </div>
 
             {/* 誕生日 */}
@@ -1267,8 +1528,8 @@ function InitialChildSetup() {
               onClick={handleSubmit}
               disabled={!isFormValid || isSubmitting}
               className={`w-full py-4 px-6 rounded-xl text-lg font-medium shadow-sm focus:outline-none ${isFormValid && !isSubmitting
-                  ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 }`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >

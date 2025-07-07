@@ -1,18 +1,28 @@
 import React, { useState } from 'react';
-import { Plus, Star, Heart, Trophy, Camera, Trash2, Edit3, MoreVertical } from 'lucide-react';
+import { Plus, Star, Heart, Trophy, Camera, Trash2, Edit3, MoreVertical, X } from 'lucide-react';
 import { useRecord } from '../context/RecordContext';
+
+interface MediaFile {
+    id: string;
+    type: 'image' | 'video';
+    data: string; // Base64エンコードされたデータ
+    name: string;
+    size: number;
+}
+
+interface GrowthRecord {
+    id: string;
+    date: Date;
+    title: string;
+    description: string;
+    category: 'first_time' | 'milestone' | 'achievement' | 'memory';
+    createdAt: Date;
+    media?: MediaFile;
+}
 
 const GrowthRecords: React.FC = () => {
     const { childInfo } = useRecord();
-    const [growthRecords, setGrowthRecords] = useState<{
-        id: string;
-        date: Date;
-        title: string;
-        description: string;
-        category: 'first_time' | 'milestone' | 'achievement' | 'memory';
-        createdAt: Date;
-    }[]>([]);
-
+    const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -22,8 +32,13 @@ const GrowthRecords: React.FC = () => {
     const [newRecord, setNewRecord] = useState({
         title: '',
         description: '',
-        category: 'first_time' as 'first_time' | 'milestone' | 'achievement' | 'memory'
+        category: 'first_time' as 'first_time' | 'milestone' | 'achievement' | 'memory',
+        media: null as MediaFile | null
     });
+
+    // ファイルサイズ制限
+    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
 
     const categoryOptions = [
         { id: 'first_time', label: 'はじめてできたこと', icon: <Star className="w-5 h-5" />, color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
@@ -32,20 +47,74 @@ const GrowthRecords: React.FC = () => {
         { id: 'memory', label: '思い出', icon: <Camera className="w-5 h-5" />, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' }
     ];
 
+    // メディアアップロード処理
+    const handleMediaUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // ファイルタイプチェック
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+
+        if (!isImage && !isVideo) {
+            alert('画像または動画ファイルを選択してください');
+            return;
+        }
+
+        // サイズチェック
+        const maxSize = isImage ? MAX_IMAGE_SIZE : MAX_VIDEO_SIZE;
+        if (file.size > maxSize) {
+            const sizeLimit = isImage ? '5MB' : '50MB';
+            alert(`ファイルサイズは${sizeLimit}以下にしてください`);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const result = e.target?.result as string;
+            const newMedia: MediaFile = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                type: isImage ? 'image' : 'video',
+                data: result,
+                name: file.name,
+                size: file.size
+            };
+            setNewRecord(prev => ({
+                ...prev,
+                media: newMedia
+            }));
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // メディアファイル削除
+    const removeMedia = () => {
+        setNewRecord(prev => ({
+            ...prev,
+            media: null
+        }));
+    };
+
     const handleAddRecord = () => {
         if (!newRecord.title.trim()) return;
 
-        const record = {
+        const record: GrowthRecord = {
             id: Date.now().toString(),
             date: new Date(),
             title: newRecord.title.trim(),
             description: newRecord.description.trim(),
             category: newRecord.category,
-            createdAt: new Date()
+            createdAt: new Date(),
+            media: newRecord.media
         };
 
         setGrowthRecords(prev => [record, ...prev]);
-        setNewRecord({ title: '', description: '', category: 'first_time' });
+        setNewRecord({
+            title: '',
+            description: '',
+            category: 'first_time',
+            media: null
+        });
         setShowAddModal(false);
     };
 
@@ -55,7 +124,8 @@ const GrowthRecords: React.FC = () => {
             setNewRecord({
                 title: record.title,
                 description: record.description,
-                category: record.category
+                category: record.category,
+                media: record.media || null
             });
             setRecordToEdit(recordId);
             setShowEditModal(true);
@@ -72,12 +142,18 @@ const GrowthRecords: React.FC = () => {
                     ...record,
                     title: newRecord.title.trim(),
                     description: newRecord.description.trim(),
-                    category: newRecord.category
+                    category: newRecord.category,
+                    media: newRecord.media
                 }
                 : record
         ));
 
-        setNewRecord({ title: '', description: '', category: 'first_time' });
+        setNewRecord({
+            title: '',
+            description: '',
+            category: 'first_time',
+            media: null
+        });
         setRecordToEdit(null);
         setShowEditModal(false);
     };
@@ -97,7 +173,12 @@ const GrowthRecords: React.FC = () => {
     };
 
     const resetModal = () => {
-        setNewRecord({ title: '', description: '', category: 'first_time' });
+        setNewRecord({
+            title: '',
+            description: '',
+            category: 'first_time',
+            media: null
+        });
         setRecordToEdit(null);
     };
 
@@ -111,6 +192,15 @@ const GrowthRecords: React.FC = () => {
             month: 'long',
             day: 'numeric'
         });
+    };
+
+    // ファイルサイズを読みやすい形式に変換
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
     return (
@@ -127,6 +217,7 @@ const GrowthRecords: React.FC = () => {
                     <button
                         onClick={() => setShowAddModal(true)}
                         className="bg-gradient-to-r from-pink-500 to-purple-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95"
+                        style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
                         <Plus size={24} />
                     </button>
@@ -148,6 +239,7 @@ const GrowthRecords: React.FC = () => {
                         <button
                             onClick={() => setShowAddModal(true)}
                             className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-8 py-3 rounded-full text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95"
+                            style={{ WebkitTapHighlightColor: 'transparent' }}
                         >
                             最初の記録を追加
                         </button>
@@ -178,17 +270,39 @@ const GrowthRecords: React.FC = () => {
                                                 {record.title}
                                             </h3>
                                             {record.description && (
-                                                <p className="text-gray-700 leading-relaxed">
+                                                <p className="text-gray-700 leading-relaxed mb-3">
                                                     {record.description}
                                                 </p>
                                             )}
+
+                                            {/* メディア表示 */}
+                                            {record.media && (
+                                                <div className="mb-3">
+                                                    {record.media.type === 'image' ? (
+                                                        <img
+                                                            src={record.media.data}
+                                                            alt={record.media.name}
+                                                            className="w-full max-w-sm h-40 object-cover rounded-lg border border-gray-200 shadow-sm"
+                                                        />
+                                                    ) : (
+                                                        <video
+                                                            src={record.media.data}
+                                                            controls
+                                                            className="w-full max-w-sm h-40 object-cover rounded-lg border border-gray-200 shadow-sm"
+                                                            preload="metadata"
+                                                        />
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
+
                                     {/* 三点メニューボタン */}
                                     <div className="absolute top-4 right-4">
                                         <button
                                             onClick={() => setShowActionMenu(showActionMenu === record.id ? null : record.id)}
                                             className="p-2 rounded-full bg-white/80 hover:bg-white border border-gray-200 text-gray-600 hover:text-gray-800 transition-colors shadow-sm"
+                                            style={{ WebkitTapHighlightColor: 'transparent' }}
                                             aria-label="アクションメニュー"
                                         >
                                             <MoreVertical size={16} />
@@ -200,6 +314,7 @@ const GrowthRecords: React.FC = () => {
                                                 <button
                                                     onClick={() => handleEditRecord(record.id)}
                                                     className="w-full px-4 py-3 text-left flex items-center space-x-2 hover:bg-gray-50 transition-colors"
+                                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                                 >
                                                     <Edit3 size={16} className="text-blue-600" />
                                                     <span className="text-sm font-medium text-gray-700">編集</span>
@@ -207,6 +322,7 @@ const GrowthRecords: React.FC = () => {
                                                 <button
                                                     onClick={() => handleDeleteRecord(record.id)}
                                                     className="w-full px-4 py-3 text-left flex items-center space-x-2 hover:bg-gray-50 transition-colors"
+                                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                                 >
                                                     <Trash2 size={16} className="text-red-600" />
                                                     <span className="text-sm font-medium text-gray-700">削除</span>
@@ -232,7 +348,7 @@ const GrowthRecords: React.FC = () => {
             {/* 記録追加モーダル */}
             {showAddModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl">
+                    <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
                             <h2 className="text-xl font-bold text-gray-800 mb-6">
                                 成長記録を追加
@@ -249,9 +365,10 @@ const GrowthRecords: React.FC = () => {
                                             key={option.id}
                                             onClick={() => setNewRecord({ ...newRecord, category: option.id as any })}
                                             className={`p-3 rounded-xl border-2 transition-all duration-200 ${newRecord.category === option.id
-                                                    ? `${option.bgColor} ${option.borderColor} ${option.color}`
-                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                                ? `${option.bgColor} ${option.borderColor} ${option.color}`
+                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                                                 }`}
+                                            style={{ WebkitTapHighlightColor: 'transparent' }}
                                         >
                                             <div className="flex flex-col items-center space-y-1">
                                                 {option.icon}
@@ -279,7 +396,7 @@ const GrowthRecords: React.FC = () => {
                             </div>
 
                             {/* 詳細説明 */}
-                            <div className="mb-6">
+                            <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     詳細説明
                                 </label>
@@ -292,6 +409,66 @@ const GrowthRecords: React.FC = () => {
                                 />
                             </div>
 
+                            {/* メディアアップロード */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                    写真・動画
+                                </label>
+
+                                {!newRecord.media ? (
+                                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+                                        <input
+                                            type="file"
+                                            accept="image/*,video/*"
+                                            onChange={handleMediaUpload}
+                                            className="hidden"
+                                            id="media-upload"
+                                        />
+                                        <label
+                                            htmlFor="media-upload"
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <Camera size={24} className="text-gray-600" />
+                                            </div>
+                                            <p className="text-sm text-gray-600 mb-2">
+                                                写真または動画を追加
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                                画像: 5MB以下 / 動画: 50MB以下
+                                            </p>
+                                        </label>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        {newRecord.media.type === 'image' ? (
+                                            <img
+                                                src={newRecord.media.data}
+                                                alt={newRecord.media.name}
+                                                className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                                            />
+                                        ) : (
+                                            <video
+                                                src={newRecord.media.data}
+                                                controls
+                                                className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                                                preload="metadata"
+                                            />
+                                        )}
+                                        <button
+                                            onClick={removeMedia}
+                                            className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                        <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                                            {formatFileSize(newRecord.media.size)}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* ボタン */}
                             <div className="flex space-x-3">
                                 <button
@@ -300,6 +477,7 @@ const GrowthRecords: React.FC = () => {
                                         resetModal();
                                     }}
                                     className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors duration-200"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     キャンセル
                                 </button>
@@ -307,9 +485,10 @@ const GrowthRecords: React.FC = () => {
                                     onClick={handleAddRecord}
                                     disabled={!newRecord.title.trim()}
                                     className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-200 ${newRecord.title.trim()
-                                            ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:shadow-lg active:scale-95'
-                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:shadow-lg active:scale-95'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         }`}
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     追加
                                 </button>
@@ -322,7 +501,7 @@ const GrowthRecords: React.FC = () => {
             {/* 記録編集モーダル */}
             {showEditModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl">
+                    <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
                             <h2 className="text-xl font-bold text-gray-800 mb-6">
                                 成長記録を編集
@@ -339,9 +518,10 @@ const GrowthRecords: React.FC = () => {
                                             key={option.id}
                                             onClick={() => setNewRecord({ ...newRecord, category: option.id as any })}
                                             className={`p-3 rounded-xl border-2 transition-all duration-200 ${newRecord.category === option.id
-                                                    ? `${option.bgColor} ${option.borderColor} ${option.color}`
-                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                                ? `${option.bgColor} ${option.borderColor} ${option.color}`
+                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                                                 }`}
+                                            style={{ WebkitTapHighlightColor: 'transparent' }}
                                         >
                                             <div className="flex flex-col items-center space-y-1">
                                                 {option.icon}
@@ -369,7 +549,7 @@ const GrowthRecords: React.FC = () => {
                             </div>
 
                             {/* 詳細説明 */}
-                            <div className="mb-6">
+                            <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     詳細説明
                                 </label>
@@ -382,6 +562,66 @@ const GrowthRecords: React.FC = () => {
                                 />
                             </div>
 
+                            {/* メディアアップロード */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                    写真・動画
+                                </label>
+
+                                {!newRecord.media ? (
+                                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+                                        <input
+                                            type="file"
+                                            accept="image/*,video/*"
+                                            onChange={handleMediaUpload}
+                                            className="hidden"
+                                            id="media-upload-edit"
+                                        />
+                                        <label
+                                            htmlFor="media-upload-edit"
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <Camera size={24} className="text-gray-600" />
+                                            </div>
+                                            <p className="text-sm text-gray-600 mb-2">
+                                                写真または動画を追加
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                                画像: 5MB以下 / 動画: 50MB以下
+                                            </p>
+                                        </label>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        {newRecord.media.type === 'image' ? (
+                                            <img
+                                                src={newRecord.media.data}
+                                                alt={newRecord.media.name}
+                                                className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                                            />
+                                        ) : (
+                                            <video
+                                                src={newRecord.media.data}
+                                                controls
+                                                className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                                                preload="metadata"
+                                            />
+                                        )}
+                                        <button
+                                            onClick={removeMedia}
+                                            className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                        <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                                            {formatFileSize(newRecord.media.size)}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* ボタン */}
                             <div className="flex space-x-3">
                                 <button
@@ -390,6 +630,7 @@ const GrowthRecords: React.FC = () => {
                                         resetModal();
                                     }}
                                     className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors duration-200"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     キャンセル
                                 </button>
@@ -397,9 +638,10 @@ const GrowthRecords: React.FC = () => {
                                     onClick={handleUpdateRecord}
                                     disabled={!newRecord.title.trim()}
                                     className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-200 ${newRecord.title.trim()
-                                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg active:scale-95'
-                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg active:scale-95'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         }`}
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     更新
                                 </button>
@@ -430,12 +672,14 @@ const GrowthRecords: React.FC = () => {
                                 <button
                                     onClick={() => setShowDeleteModal(false)}
                                     className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors duration-200"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     キャンセル
                                 </button>
                                 <button
                                     onClick={confirmDelete}
                                     className="flex-1 py-3 px-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-all duration-200 active:scale-95"
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
                                 >
                                     削除
                                 </button>

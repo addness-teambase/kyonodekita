@@ -1,6 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { format, isSameDay, startOfToday } from 'date-fns';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../lib/supabase';
+import { 
+    performDataMigration, 
+    getOrCreateAnonymousUser, 
+    fetchDataFromSupabase,
+    isOnline,
+    saveOfflineData,
+    getOfflineData,
+    syncOfflineData,
+    isMigrationCompleted
+} from '../utils/dataManager';
+import { 
+    applyPendingSchemaChanges,
+    getCurrentSchemaVersion
+} from '../utils/schemaManager';
 
 const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
 
@@ -8,7 +23,7 @@ const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
 export type RecordCategory = 'achievement' | 'happy' | 'failure' | 'trouble';
 
 // 記録イベントの型を統一
-interface RecordEvent {
+export interface RecordEvent {
     id: string;
     childId: string; // 子供ID
     timestamp: string;
@@ -32,6 +47,7 @@ export interface ChildInfo {
     age: number;
     birthdate?: string; // ISO形式の誕生日 (YYYY-MM-DD)
     gender?: 'male' | 'female'; // 性別
+    avatarImage?: string; // アバター画像（Base64エンコード）
 }
 
 interface CachedContent {
@@ -74,6 +90,10 @@ interface RecordContextType {
     removeChild: (id: string) => void;
     // 今日が誕生日かどうか
     isBirthday: () => boolean;
+    // 同期状態
+    isOnlineSync: boolean;
+    lastSyncTime: Date | null;
+    syncData: () => Promise<void>;
 }
 
 const RecordContext = createContext<RecordContextType | undefined>(undefined);
@@ -100,14 +120,92 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const [isAnimating, setIsAnimating] = useState(false);
     const [cachedContent, setCachedContent] = useState<CachedContent>({});
     const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [isOnlineSync, setIsOnlineSync] = useState(false);
+    const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
     // 現在アクティブな子供の情報
     const childInfo = activeChildId ? childrenList.find(child => child.id === activeChildId) || null : null;
 
     const today = startOfToday();
 
-    // ローカルストレージから予定や子供の情報を読み込む
+    // 初期化とデータ移行
     useEffect(() => {
+                const initializeData = async () => {
+            try {
+                // データ移行を実行
+                await performDataMigration();
+                
+                // スキーマ変更を適用
+                await applyPendingSchemaChanges();
+                
+                // 匿名ユーザーIDを取得
+                const userId = await getOrCreateAnonymousUser();
+                setCurrentUserId(userId);
+
+                // オンライン状態を確認
+                const online = isOnline();
+                setIsOnlineSync(online);
+
+                if (online) {
+                    // オンライン時はSupabaseからデータを取得
+                    const data = await fetchDataFromSupabase(userId);
+
+                    // データの形式を変換
+                    const convertedChildren = data.children.map(child => ({
+                        id: child.id,
+                        name: child.name,
+                        age: child.age,
+                        birthdate: child.birthdate || undefined,
+                        gender: child.gender || undefined,
+                        avatarImage: child.avatar_image || undefined
+                    }));
+
+                    const convertedRecordEvents = data.recordEvents.map(event => ({
+                        id: event.id,
+                        childId: event.child_id,
+                        timestamp: event.timestamp,
+                        category: event.category,
+                        note: event.note
+                    }));
+
+                    const convertedCalendarEvents = data.calendarEvents.map(event => ({
+                        id: event.id,
+                        date: event.date,
+                        title: event.title,
+                        time: event.time || undefined,
+                        description: event.description || undefined
+                    }));
+
+                    setChildrenList(convertedChildren);
+                    setRecordEvents(convertedRecordEvents);
+                    setCalendarEvents(convertedCalendarEvents);
+
+                    // 最初の子供をアクティブに設定
+                    if (convertedChildren.length > 0 && !activeChildId) {
+                        setActiveChildId(convertedChildren[0].id);
+                    }
+
+                    setLastSyncTime(new Date());
+                } else {
+                    // オフライン時はlocalStorageからデータを読み込む
+                    loadFromLocalStorage();
+                }
+
+                // オフラインデータの同期
+                await syncOfflineData(userId);
+            } catch (error) {
+                console.error('Error initializing data:', error);
+                // エラー時はlocalStorageからデータを読み込む
+                loadFromLocalStorage();
+            }
+        };
+
+        initializeData();
+    }, []);
+
+    // localStorageからデータを読み込む関数
+    const loadFromLocalStorage = () => {
         const savedRecordEvents = localStorage.getItem('recordEvents');
         if (savedRecordEvents) {
             try {
@@ -132,27 +230,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 const parsedChildren = JSON.parse(savedChildren);
                 setChildrenList(parsedChildren);
 
-                // 以前の単一の子供情報がある場合は変換
-                if (parsedChildren.length === 0) {
-                    const savedChildInfo = localStorage.getItem('childInfo');
-                    if (savedChildInfo) {
-                        try {
-                            const oldChildInfo = JSON.parse(savedChildInfo);
-                            // IDを追加して新しい形式に変換
-                            const newChild = {
-                                ...oldChildInfo,
-                                id: crypto.randomUUID()
-                            };
-                            setChildrenList([newChild]);
-                            setActiveChildId(newChild.id);
-                            // 古いデータを削除
-                            localStorage.removeItem('childInfo');
-                        } catch (e) {
-                            console.error('Failed to convert old child info:', e);
-                        }
-                    }
-                } else if (parsedChildren.length > 0 && !activeChildId) {
-                    // 最初の子供をアクティブに設定
+                if (parsedChildren.length > 0 && !activeChildId) {
                     setActiveChildId(parsedChildren[0].id);
                 }
             } catch (e) {
@@ -164,7 +242,76 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (savedActiveChildId) {
             setActiveChildId(savedActiveChildId);
         }
-    }, []);
+    };
+
+    // データをSupabaseに保存する関数
+    const saveToSupabase = async (type: 'recordEvent' | 'calendarEvent' | 'child', data: any) => {
+        if (!currentUserId || !isOnline()) {
+            // オフライン時はlocalStorageに保存
+            saveOfflineData(type, data);
+            return;
+        }
+
+        try {
+            switch (type) {
+                case 'recordEvent':
+                    await supabase.from('record_events').insert([{
+                        user_id: currentUserId,
+                        child_id: data.childId,
+                        timestamp: data.timestamp,
+                        category: data.category,
+                        note: data.note
+                    }]);
+                    break;
+                case 'calendarEvent':
+                    await supabase.from('calendar_events').insert([{
+                        user_id: currentUserId,
+                        date: data.date,
+                        title: data.title,
+                        time: data.time || null,
+                        description: data.description || null
+                    }]);
+                    break;
+                case 'child':
+                    await supabase.from('children').insert([{
+                        user_id: currentUserId,
+                        name: data.name,
+                        age: data.age,
+                        birthdate: data.birthdate || null,
+                        gender: data.gender || null,
+                        avatar_image: data.avatarImage || null
+                    }]);
+                    break;
+            }
+        } catch (error) {
+            console.error('Error saving to Supabase:', error);
+            // エラー時はオフラインデータとして保存
+            saveOfflineData(type, data);
+        }
+    };
+
+    // データをSupabaseから削除する関数
+    const deleteFromSupabase = async (type: 'recordEvent' | 'calendarEvent' | 'child', id: string) => {
+        if (!currentUserId || !isOnline()) {
+            return;
+        }
+
+        try {
+            switch (type) {
+                case 'recordEvent':
+                    await supabase.from('record_events').delete().eq('id', id);
+                    break;
+                case 'calendarEvent':
+                    await supabase.from('calendar_events').delete().eq('id', id);
+                    break;
+                case 'child':
+                    await supabase.from('children').delete().eq('id', id);
+                    break;
+            }
+        } catch (error) {
+            console.error('Error deleting from Supabase:', error);
+        }
+    };
 
     // 記録が変更されたら保存する
     useEffect(() => {
@@ -188,6 +335,29 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         }
     }, [activeChildId]);
 
+    // オンライン状態の監視
+    useEffect(() => {
+        const handleOnline = async () => {
+            setIsOnlineSync(true);
+            if (currentUserId) {
+                await syncOfflineData(currentUserId);
+                await syncData();
+            }
+        };
+
+        const handleOffline = () => {
+            setIsOnlineSync(false);
+        };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [currentUserId]);
+
     const todayEvents = recordEvents.filter(event =>
         activeChildId === event.childId && isSameDay(new Date(event.timestamp), today)
     );
@@ -201,7 +371,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         }
     };
 
-    const addRecordEvent = (category: RecordCategory, note: string) => {
+    const addRecordEvent = async (category: RecordCategory, note: string) => {
         // アクティブな子供がいない場合は記録できない
         if (!activeChildId) return;
 
@@ -212,17 +382,22 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             category,
             note
         };
+
         setRecordEvents(prev => [...prev, newEvent]);
         setIsAnimating(true);
         setTimeout(() => setIsAnimating(false), 2000);
+
+        // Supabaseに保存
+        await saveToSupabase('recordEvent', newEvent);
     };
 
-    const deleteRecordEvent = (id: string) => {
+    const deleteRecordEvent = async (id: string) => {
         setRecordEvents(prev => prev.filter(event => event.id !== id));
+        await deleteFromSupabase('recordEvent', id);
     };
 
     // 予定追加
-    const addCalendarEvent = (date: Date, title: string, time?: string, description?: string) => {
+    const addCalendarEvent = async (date: Date, title: string, time?: string, description?: string) => {
         const newEvent: CalendarEvent = {
             id: crypto.randomUUID(),
             date: date.toISOString(),
@@ -230,12 +405,15 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             time,
             description
         };
+
         setCalendarEvents(prev => [...prev, newEvent]);
+        await saveToSupabase('calendarEvent', newEvent);
     };
 
     // 予定削除
-    const deleteCalendarEvent = (id: string) => {
+    const deleteCalendarEvent = async (id: string) => {
         setCalendarEvents(prev => prev.filter(event => event.id !== id));
+        await deleteFromSupabase('calendarEvent', id);
     };
 
     // 特定の日付の予定を取得
@@ -262,14 +440,16 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     };
 
     // 子供を追加
-    const addChild = (name: string, age: number, birthdate?: string, gender?: 'male' | 'female') => {
+    const addChild = async (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => {
         const newChild: ChildInfo = {
             id: crypto.randomUUID(),
             name,
             age,
             birthdate,
-            gender
+            gender,
+            avatarImage
         };
+
         const updatedChildren = [...childrenList, newChild];
         setChildrenList(updatedChildren);
 
@@ -277,18 +457,37 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (updatedChildren.length === 1) {
             setActiveChildId(newChild.id);
         }
+
+        await saveToSupabase('child', newChild);
         return newChild.id;
     };
 
     // 子供の情報を更新
-    const updateChildInfo = (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female') => {
+    const updateChildInfo = async (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => {
+        const updatedChild = { id, name, age, birthdate, gender, avatarImage };
+
         setChildrenList(prev => prev.map(child =>
-            child.id === id ? { ...child, name, age, birthdate, gender } : child
+            child.id === id ? updatedChild : child
         ));
+
+        // Supabaseで更新
+        if (currentUserId && isOnline()) {
+            try {
+                await supabase.from('children').update({
+                    name,
+                    age,
+                    birthdate: birthdate || null,
+                    gender: gender || null,
+                    avatar_image: avatarImage || null
+                }).eq('id', id);
+            } catch (error) {
+                console.error('Error updating child in Supabase:', error);
+            }
+        }
     };
 
     // 子供を削除
-    const removeChild = (id: string) => {
+    const removeChild = async (id: string) => {
         setChildrenList(prev => prev.filter(child => child.id !== id));
 
         // 削除した子供がアクティブだった場合、別の子供をアクティブにする
@@ -300,6 +499,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 setActiveChildId(null);
             }
         }
+
+        await deleteFromSupabase('child', id);
     };
 
     // 今日が誕生日かどうかをチェック
@@ -311,6 +512,48 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
         return today.getMonth() === birthdate.getMonth() &&
             today.getDate() === birthdate.getDate();
+    };
+
+    // データ同期
+    const syncData = async () => {
+        if (!currentUserId || !isOnline()) return;
+
+        try {
+            const data = await fetchDataFromSupabase(currentUserId);
+
+            // データの形式を変換
+            const convertedChildren = data.children.map(child => ({
+                id: child.id,
+                name: child.name,
+                age: child.age,
+                birthdate: child.birthdate || undefined,
+                gender: child.gender || undefined,
+                avatarImage: child.avatar_image || undefined
+            }));
+
+            const convertedRecordEvents = data.recordEvents.map(event => ({
+                id: event.id,
+                childId: event.child_id,
+                timestamp: event.timestamp,
+                category: event.category,
+                note: event.note
+            }));
+
+            const convertedCalendarEvents = data.calendarEvents.map(event => ({
+                id: event.id,
+                date: event.date,
+                title: event.title,
+                time: event.time || undefined,
+                description: event.description || undefined
+            }));
+
+            setChildrenList(convertedChildren);
+            setRecordEvents(convertedRecordEvents);
+            setCalendarEvents(convertedCalendarEvents);
+            setLastSyncTime(new Date());
+        } catch (error) {
+            console.error('Error syncing data:', error);
+        }
     };
 
     return (
@@ -341,7 +584,10 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             addChild,
             updateChildInfo,
             removeChild,
-            isBirthday
+            isBirthday,
+            isOnlineSync,
+            lastSyncTime,
+            syncData
         }}>
             {children}
         </RecordContext.Provider>

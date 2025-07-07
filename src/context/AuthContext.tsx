@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 interface User {
     id: string;
     username: string;
+    avatarImage?: string; // アバター画像（Base64エンコード）
 }
 
 interface AuthContextType {
@@ -11,6 +12,7 @@ interface AuthContextType {
     login: (username: string, password: string) => Promise<boolean>;
     logout: () => void;
     isLoading: boolean;
+    updateUser: (username: string, avatarImage?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -67,13 +69,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.removeItem('user');
     };
 
+    const updateUser = (username: string, avatarImage?: string) => {
+        if (user) {
+            const updatedUser: User = {
+                ...user,
+                username,
+                avatarImage
+            };
+            setUser(updatedUser);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
             isAuthenticated: !!user,
             login,
             logout,
-            isLoading
+            isLoading,
+            updateUser
         }}>
             {children}
         </AuthContext.Provider>
