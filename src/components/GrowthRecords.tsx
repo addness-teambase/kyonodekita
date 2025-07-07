@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Star, Heart, Trophy, Camera, Trash2, Edit3, MoreVertical, X } from 'lucide-react';
 import { useRecord } from '../context/RecordContext';
+import { compressImage } from '../utils/imageUtils';
 
 interface MediaFile {
     id: string;
@@ -48,7 +49,7 @@ const GrowthRecords: React.FC = () => {
     ];
 
     // メディアアップロード処理
-    const handleMediaUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
@@ -61,30 +62,55 @@ const GrowthRecords: React.FC = () => {
             return;
         }
 
-        // サイズチェック
-        const maxSize = isImage ? MAX_IMAGE_SIZE : MAX_VIDEO_SIZE;
-        if (file.size > maxSize) {
-            const sizeLimit = isImage ? '5MB' : '50MB';
-            alert(`ファイルサイズは${sizeLimit}以下にしてください`);
-            return;
-        }
+        try {
+            if (isImage) {
+                // 画像の場合は圧縮処理
+                const compressedImage = await compressImage(file, {
+                    maxWidth: 1200,
+                    maxHeight: 900,
+                    quality: 0.8,
+                    maxSizeKB: 800 // 800KB以下に制限
+                });
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const result = e.target?.result as string;
-            const newMedia: MediaFile = {
-                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                type: isImage ? 'image' : 'video',
-                data: result,
-                name: file.name,
-                size: file.size
-            };
-            setNewRecord(prev => ({
-                ...prev,
-                media: newMedia
-            }));
-        };
-        reader.readAsDataURL(file);
+                const newMedia: MediaFile = {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    type: 'image',
+                    data: compressedImage,
+                    name: file.name,
+                    size: compressedImage.length
+                };
+                setNewRecord(prev => ({
+                    ...prev,
+                    media: newMedia
+                }));
+            } else {
+                // 動画の場合は従来の処理
+                if (file.size > MAX_VIDEO_SIZE) {
+                    alert('動画ファイルサイズは50MB以下にしてください');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const result = e.target?.result as string;
+                    const newMedia: MediaFile = {
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                        type: 'video',
+                        data: result,
+                        name: file.name,
+                        size: file.size
+                    };
+                    setNewRecord(prev => ({
+                        ...prev,
+                        media: newMedia
+                    }));
+                };
+                reader.readAsDataURL(file);
+            }
+        } catch (error) {
+            console.error('メディアの処理に失敗しました:', error);
+            alert('メディアの処理に失敗しました。別のファイルを試してください。');
+        }
     };
 
     // メディアファイル削除
@@ -588,7 +614,7 @@ const GrowthRecords: React.FC = () => {
                                                 写真または動画を追加
                                             </p>
                                             <p className="text-xs text-gray-400">
-                                                画像: 5MB以下 / 動画: 50MB以下
+                                                画像: 自動圧縮 / 動画: 50MB以下
                                             </p>
                                         </label>
                                     </div>

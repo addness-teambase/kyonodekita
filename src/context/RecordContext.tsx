@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { format, isSameDay, startOfToday } from 'date-fns';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { safeLocalStorageSet, checkLocalStorageUsage } from '../utils/imageUtils';
 
 const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
 
@@ -151,11 +152,27 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     // データをローカルストレージに保存
     const saveToLocalStorage = () => {
         try {
-            localStorage.setItem('children', JSON.stringify(childrenList));
-            localStorage.setItem('recordEvents', JSON.stringify(recordEvents));
-            localStorage.setItem('calendarEvents', JSON.stringify(calendarEvents));
-            localStorage.setItem('activeChildId', activeChildId || '');
-            localStorage.setItem('cachedContent', JSON.stringify(cachedContent));
+            // LocalStorageの使用量をチェック
+            const usage = checkLocalStorageUsage();
+            if (usage.percentage > 80) {
+                console.warn(`LocalStorage使用量: ${usage.percentage.toFixed(1)}%`);
+            }
+
+            // 安全な保存を試行
+            const success = (
+                safeLocalStorageSet('children', JSON.stringify(childrenList)) &&
+                safeLocalStorageSet('recordEvents', JSON.stringify(recordEvents)) &&
+                safeLocalStorageSet('calendarEvents', JSON.stringify(calendarEvents)) &&
+                safeLocalStorageSet('activeChildId', activeChildId || '') &&
+                safeLocalStorageSet('cachedContent', JSON.stringify(cachedContent))
+            );
+
+            if (!success) {
+                console.error('LocalStorage容量不足のため、一部のデータを保存できませんでした');
+                // 容量不足の場合はキャッシュを削除
+                localStorage.removeItem('cachedContent');
+                setCachedContent({});
+            }
         } catch (error) {
             console.error('Error saving data to localStorage:', error);
         }

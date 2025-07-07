@@ -4,6 +4,7 @@ import { RecordProvider, useRecord, RecordCategory } from './context/RecordConte
 import { AuthProvider, useAuth } from './context/AuthContext';
 import RecordButton from './components/RecordButton';
 import GrowthRecords from './components/GrowthRecords';
+import { compressImage } from './utils/imageUtils';
 
 import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
@@ -136,52 +137,42 @@ function AppContent() {
   };
 
   // 画像をBase64エンコードする関数
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // ファイルサイズチェック（5MB以下）
-      if (file.size > 5 * 1024 * 1024) {
-        alert('画像サイズは5MB以下にしてください');
-        return;
+      try {
+        // 画像を圧縮してBase64エンコード
+        const compressedImage = await compressImage(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8,
+          maxSizeKB: 300 // 300KB以下に制限
+        });
+        setChildAvatarImage(compressedImage);
+      } catch (error) {
+        console.error('画像の処理に失敗しました:', error);
+        alert('画像の処理に失敗しました。別の画像を試してください。');
       }
-
-      // 画像形式チェック
-      if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setChildAvatarImage(result);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
   // 保護者の画像をBase64エンコードする関数
-  const handleParentImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleParentImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // ファイルサイズチェック（5MB以下）
-      if (file.size > 5 * 1024 * 1024) {
-        alert('画像サイズは5MB以下にしてください');
-        return;
+      try {
+        // 画像を圧縮してBase64エンコード
+        const compressedImage = await compressImage(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8,
+          maxSizeKB: 300 // 300KB以下に制限
+        });
+        setParentAvatarImage(compressedImage);
+      } catch (error) {
+        console.error('画像の処理に失敗しました:', error);
+        alert('画像の処理に失敗しました。別の画像を試してください。');
       }
-      
-      // 画像形式チェック
-      if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setParentAvatarImage(result);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -295,9 +286,9 @@ function AppContent() {
                 <div className="flex items-center flex-1 min-w-0">
                   <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mr-4 flex-shrink-0 overflow-hidden">
                     {user?.avatarImage ? (
-                      <img 
-                        src={user.avatarImage} 
-                        alt="保護者アイコン" 
+                      <img
+                        src={user.avatarImage}
+                        alt="保護者アイコン"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -795,9 +786,9 @@ function AppContent() {
               title="ログアウト"
             >
               {user.avatarImage ? (
-                <img 
-                  src={user.avatarImage} 
-                  alt="保護者アイコン" 
+                <img
+                  src={user.avatarImage}
+                  alt="保護者アイコン"
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -992,7 +983,7 @@ function AppContent() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  スマホのカメラフォルダーから写真を選択できます（5MB以下）
+                  スマホのカメラフォルダーから写真を選択できます（自動で圧縮されます）
                 </p>
               </div>
 
@@ -1183,9 +1174,9 @@ function AppContent() {
                 <div className="flex items-center space-x-4">
                   <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
                     {parentAvatarImage ? (
-                      <img 
-                        src={parentAvatarImage} 
-                        alt="保護者アイコン" 
+                      <img
+                        src={parentAvatarImage}
+                        alt="保護者アイコン"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -1218,7 +1209,7 @@ function AppContent() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  スマホのカメラフォルダーから写真を選択できます（5MB以下）
+                  スマホのカメラフォルダーから写真を選択できます（自動で圧縮されます）
                 </p>
               </div>
             </div>
@@ -1268,27 +1259,22 @@ function InitialChildSetup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 画像をBase64エンコードする関数
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // ファイルサイズチェック（5MB以下）
-      if (file.size > 5 * 1024 * 1024) {
-        alert('画像サイズは5MB以下にしてください');
-        return;
+      try {
+        // 画像を圧縮してBase64エンコード
+        const compressedImage = await compressImage(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8,
+          maxSizeKB: 300 // 300KB以下に制限
+        });
+        setChildAvatarImage(compressedImage);
+      } catch (error) {
+        console.error('画像の処理に失敗しました:', error);
+        alert('画像の処理に失敗しました。別の画像を試してください。');
       }
-
-      // 画像形式チェック
-      if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setChildAvatarImage(result);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -1386,8 +1372,8 @@ function InitialChildSetup() {
                   <label
                     htmlFor="avatar-upload-initial"
                     className={`inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium ${isSubmitting
-                        ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                        : 'text-gray-700 bg-white hover:bg-gray-50 cursor-pointer'
+                      ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                      : 'text-gray-700 bg-white hover:bg-gray-50 cursor-pointer'
                       }`}
                   >
                     📱 写真を選択
@@ -1405,7 +1391,7 @@ function InitialChildSetup() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                スマホのカメラフォルダーから写真を選択できます（5MB以下）
+                スマホのカメラフォルダーから写真を選択できます（自動で圧縮されます）
               </p>
             </div>
 
