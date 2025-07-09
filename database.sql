@@ -154,7 +154,59 @@ CREATE INDEX IF NOT EXISTS idx_records_child_id ON records(child_id);
 CREATE INDEX IF NOT EXISTS idx_records_timestamp ON records(timestamp);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_user_id ON calendar_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_child_id ON calendar_events(child_id);
 CREATE INDEX IF NOT EXISTS idx_daily_records_user_id ON daily_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_records_date ON daily_records(date);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id); 
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
+
+-- =============================================================================
+-- MIGRATION SECTION: 既存のデータベースを更新する場合のみ実行
+-- =============================================================================
+-- 注意: 上記の新規作成用スクリプトを実行する場合は、以下のマイグレーション部分は実行しないでください
+-- 既存のデータベースがある場合のみ、以下のマイグレーション用コマンドを実行してください
+
+/*
+-- カレンダーイベントテーブルに子供IDを追加するマイグレーション
+-- 既存のcalendar_eventsテーブルがある場合のみ実行
+
+-- 1. child_idカラムを追加（一時的にNULLを許可）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'calendar_events' AND column_name = 'child_id'
+    ) THEN
+        ALTER TABLE calendar_events ADD COLUMN child_id UUID;
+    END IF;
+END $$;
+
+-- 2. 外部キー制約を追加
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_calendar_events_child_id'
+    ) THEN
+        ALTER TABLE calendar_events ADD CONSTRAINT fk_calendar_events_child_id 
+        FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+-- 3. インデックスを追加
+CREATE INDEX IF NOT EXISTS idx_calendar_events_child_id ON calendar_events(child_id);
+
+-- 4. 既存のイベントを削除（子供IDがないため）
+DELETE FROM calendar_events WHERE child_id IS NULL;
+
+-- 5. child_idをNOT NULLに設定
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'calendar_events' AND column_name = 'child_id' AND is_nullable = 'YES'
+    ) THEN
+        ALTER TABLE calendar_events ALTER COLUMN child_id SET NOT NULL;
+    END IF;
+END $$;
+*/ 
