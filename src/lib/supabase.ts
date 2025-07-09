@@ -4,7 +4,19 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase URL and Key are required')
+    console.error('Supabase configuration error:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseKey,
+        url: supabaseUrl ? 'set' : 'missing',
+        key: supabaseKey ? 'set' : 'missing'
+    })
+
+    // 本番環境での一時的なフォールバック
+    if (typeof window !== 'undefined') {
+        window.location.href = '/error.html'
+    }
+
+    throw new Error('Supabase URL and Key are required. Please check your environment variables.')
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
