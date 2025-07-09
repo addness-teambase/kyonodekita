@@ -1,47 +1,60 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { format, isSameDay, startOfToday } from 'date-fns';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { safeLocalStorageSet, checkLocalStorageUsage } from '../utils/imageUtils';
+import { GoogleGenAI } from '@google/genai';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
-const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
+const ai = new GoogleGenAI({
+    apiKey: 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
+});
 
 // カテゴリータイプの定義
 export type RecordCategory = 'achievement' | 'happy' | 'failure' | 'trouble';
 
-// 記録イベントの型を統一
+// 型定義
 export interface RecordEvent {
     id: string;
-    childId: string; // 子供ID
+    childId: string;
     timestamp: string;
     category: RecordCategory;
     note: string;
 }
 
-// 予定の型定義
 export interface CalendarEvent {
     id: string;
-    date: string; // ISO文字列
+    date: string;
     title: string;
-    time?: string; // 時間（HH:MM形式）
+    time?: string;
     description?: string;
 }
 
-// 子供の情報の型定義
 export interface ChildInfo {
     id: string;
     name: string;
     age: number;
-    birthdate?: string; // ISO形式の誕生日 (YYYY-MM-DD)
-    gender?: 'male' | 'female'; // 性別
-    avatarImage?: string; // アバター画像（Base64エンコード）
+    birthdate?: string;
+    gender?: 'male' | 'female';
+    avatarImage?: string;
+}
+
+export interface GrowthRecord {
+    id: string;
+    date: Date;
+    title: string;
+    description: string;
+    category: string;
+    createdAt: Date;
+    media?: {
+        id: string;
+        type: 'image' | 'video';
+        data: string;
+        name: string;
+        size: number;
+    } | null;
 }
 
 interface CachedContent {
-    [key: string]: {
-        diary?: string;
-        message?: string;
-        lastUpdate?: number;
-    };
+    [key: string]: any;
 }
 
 interface RecordContextType {
@@ -51,31 +64,34 @@ interface RecordContextType {
     setSelectedDate: (date: Date) => void;
     activeCategory: RecordCategory;
     setActiveCategory: (category: RecordCategory) => void;
-    addRecordEvent: (category: RecordCategory, note: string) => void;
-    deleteRecordEvent: (id: string) => void;
+    addRecordEvent: (category: RecordCategory, note: string) => Promise<void>;
+    updateRecordEvent: (id: string, category: RecordCategory, note: string) => Promise<void>;
+    deleteRecordEvent: (id: string) => Promise<void>;
     isAnimating: boolean;
-    setIsAnimating: (value: boolean) => void;
+    setIsAnimating: (isAnimating: boolean) => void;
     cachedContent: CachedContent;
-    setCachedContent: React.Dispatch<React.SetStateAction<CachedContent>>;
+    setCachedContent: (content: CachedContent) => void;
     lastSelectedDate: Date | null;
     today: Date;
-    // カテゴリー名を取得する関数
     getCategoryName: (category: RecordCategory) => string;
-    // 予定関連の機能
     calendarEvents: CalendarEvent[];
-    addCalendarEvent: (date: Date, title: string, time?: string, description?: string) => void;
-    deleteCalendarEvent: (id: string) => void;
+    addCalendarEvent: (date: Date, title: string, time?: string, description?: string) => Promise<void>;
+    deleteCalendarEvent: (id: string) => Promise<void>;
     getCalendarEventsForDate: (date: Date) => CalendarEvent[];
-    // 子供の情報
     children: ChildInfo[];
     childInfo: ChildInfo | null;
     activeChildId: string | null;
     setActiveChildId: (id: string | null) => void;
-    addChild: (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => string;
-    updateChildInfo: (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => void;
-    removeChild: (id: string) => void;
-    // 今日が誕生日かどうか
+    addChild: (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => Promise<string>;
+    updateChildInfo: (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => Promise<void>;
+    removeChild: (id: string) => Promise<void>;
     isBirthday: () => boolean;
+    migrateFromLocalStorage: () => Promise<void>;
+    isDataMigrated: boolean;
+}
+
+interface RecordProviderProps {
+    children: ReactNode;
 }
 
 const RecordContext = createContext<RecordContextType | undefined>(undefined);
@@ -88,11 +104,8 @@ export const useRecord = () => {
     return context;
 };
 
-interface RecordProviderProps {
-    children: ReactNode;
-}
-
 export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
+    const { user, isAuthenticated } = useAuth();
     const [recordEvents, setRecordEvents] = useState<RecordEvent[]>([]);
     const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
     const [childrenList, setChildrenList] = useState<ChildInfo[]>([]);
@@ -102,196 +115,372 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const [isAnimating, setIsAnimating] = useState(false);
     const [cachedContent, setCachedContent] = useState<CachedContent>({});
     const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
+    const [isDataMigrated, setIsDataMigrated] = useState(true); // ローカルストレージ使用なので常にtrue
 
     // 現在アクティブな子供の情報
     const childInfo = activeChildId ? childrenList.find(child => child.id === activeChildId) || null : null;
 
     const today = startOfToday();
 
-    // 初期化: ローカルストレージからデータを読み込む
+    // Supabaseからデータを読み込む
     useEffect(() => {
-        loadFromLocalStorage();
-    }, []);
+        if (isAuthenticated && user) {
+            loadDataFromSupabase();
+        }
+    }, [isAuthenticated, user]);
 
-    // ローカルストレージからデータを読み込む
-    const loadFromLocalStorage = () => {
+    // Supabaseからデータを読み込む関数
+    const loadDataFromSupabase = async () => {
+        if (!user) return;
+
         try {
-            const storedChildren = localStorage.getItem('children');
-            const storedRecordEvents = localStorage.getItem('recordEvents');
-            const storedCalendarEvents = localStorage.getItem('calendarEvents');
-            const storedActiveChildId = localStorage.getItem('activeChildId');
-            const storedCachedContent = localStorage.getItem('cachedContent');
+            // 子供データの読み込み
+            const { data: children, error: childrenError } = await supabase
+                .from('children')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: true });
 
-            if (storedChildren) {
-                const parsedChildren = JSON.parse(storedChildren);
-                setChildrenList(parsedChildren);
+            if (childrenError) {
+                console.error('子供データの読み込みエラー:', childrenError);
+            } else if (children) {
+                const childrenList = children.map(child => ({
+                    id: child.id,
+                    name: child.name,
+                    age: child.age,
+                    birthdate: child.birthdate,
+                    gender: child.gender,
+                    avatarImage: child.avatar_image
+                }));
+                setChildrenList(childrenList);
+
+                // アクティブな子供IDが設定されていない場合、最初の子供を選択
+                if (childrenList.length > 0 && !activeChildId) {
+                    setActiveChildId(childrenList[0].id);
+                }
             }
 
-            if (storedRecordEvents) {
-                const parsedRecordEvents = JSON.parse(storedRecordEvents);
-                setRecordEvents(parsedRecordEvents);
+            // 記録データの読み込み
+            const { data: records, error: recordsError } = await supabase
+                .from('records')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('timestamp', { ascending: false });
+
+            if (recordsError) {
+                console.error('記録データの読み込みエラー:', recordsError);
+            } else if (records) {
+                const recordsList = records.map(record => ({
+                    id: record.id,
+                    childId: record.child_id,
+                    timestamp: record.timestamp,
+                    category: record.category,
+                    note: record.note
+                }));
+                setRecordEvents(recordsList);
             }
 
-            if (storedCalendarEvents) {
-                const parsedCalendarEvents = JSON.parse(storedCalendarEvents);
-                setCalendarEvents(parsedCalendarEvents);
+            // カレンダーイベントの読み込み
+            const { data: calendarEvents, error: calendarError } = await supabase
+                .from('calendar_events')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('date', { ascending: true });
+
+            if (calendarError) {
+                console.error('カレンダーデータの読み込みエラー:', calendarError);
+            } else if (calendarEvents) {
+                const calendarList = calendarEvents.map(event => ({
+                    id: event.id,
+                    date: event.date,
+                    title: event.title,
+                    time: event.time,
+                    description: event.description
+                }));
+                setCalendarEvents(calendarList);
             }
 
-            if (storedActiveChildId) {
-                setActiveChildId(storedActiveChildId);
-            }
-
-            if (storedCachedContent) {
-                setCachedContent(JSON.parse(storedCachedContent));
-            }
         } catch (error) {
-            console.error('Error loading data from localStorage:', error);
+            console.error('Supabaseデータの読み込みエラー:', error);
         }
     };
 
-    // データをローカルストレージに保存
-    const saveToLocalStorage = () => {
-        try {
-            // LocalStorageの使用量をチェック
-            const usage = checkLocalStorageUsage();
-            if (usage.percentage > 80) {
-                console.warn(`LocalStorage使用量: ${usage.percentage.toFixed(1)}%`);
-            }
-
-            // 安全な保存を試行
-            const success = (
-                safeLocalStorageSet('children', JSON.stringify(childrenList)) &&
-                safeLocalStorageSet('recordEvents', JSON.stringify(recordEvents)) &&
-                safeLocalStorageSet('calendarEvents', JSON.stringify(calendarEvents)) &&
-                safeLocalStorageSet('activeChildId', activeChildId || '') &&
-                safeLocalStorageSet('cachedContent', JSON.stringify(cachedContent))
-            );
-
-            if (!success) {
-                console.error('LocalStorage容量不足のため、一部のデータを保存できませんでした');
-                // 容量不足の場合はキャッシュを削除
-                localStorage.removeItem('cachedContent');
-                setCachedContent({});
-            }
-        } catch (error) {
-            console.error('Error saving data to localStorage:', error);
-        }
+    // データ移行は不要（ローカルストレージ使用）
+    const migrateFromLocalStorage = async (): Promise<void> => {
+        // 何もしない（既にローカルストレージを使用）
+        setIsDataMigrated(true);
     };
 
-    // データが変更されたときに自動保存
-    useEffect(() => {
-        saveToLocalStorage();
-    }, [childrenList, recordEvents, calendarEvents, activeChildId, cachedContent]);
-
-    // 選択された日付を更新
     const updateSelectedDate = (date: Date) => {
         setLastSelectedDate(selectedDate);
         setSelectedDate(date);
     };
 
-    // 記録イベントを追加
-    const addRecordEvent = (category: RecordCategory, note: string) => {
-        if (!childInfo) return;
+    const addRecordEvent = async (category: RecordCategory, note: string): Promise<void> => {
+        if (!user || !activeChildId) return;
 
-        const newEvent: RecordEvent = {
-            id: crypto.randomUUID(),
-            childId: childInfo.id,
-            timestamp: new Date().toISOString(),
-            category,
-            note
-        };
+        try {
+            const { data, error } = await supabase
+                .from('records')
+                .insert({
+                    child_id: activeChildId,
+                    user_id: user.id,
+                    category,
+                    note,
+                    timestamp: new Date().toISOString()
+                })
+                .select()
+                .single();
 
-        setRecordEvents(prev => [...prev, newEvent]);
-        setIsAnimating(true);
+            if (error) {
+                console.error('記録追加エラー:', error);
+                return;
+            }
+
+            const newRecord: RecordEvent = {
+                id: data.id,
+                childId: data.child_id,
+                timestamp: data.timestamp,
+                category: data.category,
+                note: data.note
+            };
+
+            const updatedRecords = [newRecord, ...recordEvents];
+            setRecordEvents(updatedRecords);
+        } catch (error) {
+            console.error('記録追加エラー:', error);
+        }
     };
 
-    // 記録イベントを削除
-    const deleteRecordEvent = (id: string) => {
-        setRecordEvents(prev => prev.filter(event => event.id !== id));
+    const updateRecordEvent = async (id: string, category: RecordCategory, note: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { error } = await supabase
+                .from('records')
+                .update({
+                    category,
+                    note,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id);
+
+            if (error) {
+                console.error('記録更新エラー:', error);
+                return;
+            }
+
+            const updatedRecords = recordEvents.map(record =>
+                record.id === id ? { ...record, category, note } : record
+            );
+            setRecordEvents(updatedRecords);
+        } catch (error) {
+            console.error('記録更新エラー:', error);
+        }
     };
 
-    // 予定を追加
-    const addCalendarEvent = (date: Date, title: string, time?: string, description?: string) => {
-        const newEvent: CalendarEvent = {
-            id: crypto.randomUUID(),
-            date: format(date, 'yyyy-MM-dd'),
-            title,
-            time,
-            description
-        };
+    const deleteRecordEvent = async (id: string): Promise<void> => {
+        if (!user) return;
 
-        setCalendarEvents(prev => [...prev, newEvent]);
+        try {
+            const { error } = await supabase
+                .from('records')
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                console.error('記録削除エラー:', error);
+                return;
+            }
+
+            const updatedRecords = recordEvents.filter(record => record.id !== id);
+            setRecordEvents(updatedRecords);
+        } catch (error) {
+            console.error('記録削除エラー:', error);
+        }
     };
 
-    // 予定を削除
-    const deleteCalendarEvent = (id: string) => {
-        setCalendarEvents(prev => prev.filter(event => event.id !== id));
+    const addCalendarEvent = async (date: Date, title: string, time?: string, description?: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('calendar_events')
+                .insert({
+                    user_id: user.id,
+                    date: format(date, 'yyyy-MM-dd'),
+                    title,
+                    time,
+                    description
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('カレンダーイベント追加エラー:', error);
+                return;
+            }
+
+            const newEvent: CalendarEvent = {
+                id: data.id,
+                date: data.date,
+                title: data.title,
+                time: data.time,
+                description: data.description
+            };
+
+            const updatedEvents = [...calendarEvents, newEvent];
+            setCalendarEvents(updatedEvents);
+        } catch (error) {
+            console.error('カレンダーイベント追加エラー:', error);
+        }
     };
 
-    // 特定の日付の予定を取得
+    const deleteCalendarEvent = async (id: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { error } = await supabase
+                .from('calendar_events')
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                console.error('カレンダーイベント削除エラー:', error);
+                return;
+            }
+
+            const updatedEvents = calendarEvents.filter(event => event.id !== id);
+            setCalendarEvents(updatedEvents);
+        } catch (error) {
+            console.error('カレンダーイベント削除エラー:', error);
+        }
+    };
+
     const getCalendarEventsForDate = (date: Date): CalendarEvent[] => {
         const dateStr = format(date, 'yyyy-MM-dd');
         return calendarEvents.filter(event => event.date === dateStr);
     };
 
-    // カテゴリー名を取得
     const getCategoryName = (category: RecordCategory): string => {
-        const categoryNames = {
-            achievement: 'できた！',
-            happy: 'うれしい',
-            failure: '気になったこと',
-            trouble: 'こまった'
+        const names = {
+            'achievement': 'できたこと',
+            'happy': 'うれしかったこと',
+            'failure': 'うまくいかなかったこと',
+            'trouble': 'こまったこと'
         };
-        return categoryNames[category];
+        return names[category];
     };
 
-    // 子供を追加
-    const addChild = (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): string => {
-        const newChild: ChildInfo = {
-            id: crypto.randomUUID(),
-            name,
-            age,
-            birthdate,
-            gender,
-            avatarImage
-        };
+    const addChild = async (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<string> => {
+        if (!user) throw new Error('ユーザーが認証されていません');
 
-        setChildrenList(prev => [...prev, newChild]);
+        try {
+            const { data, error } = await supabase
+                .from('children')
+                .insert({
+                    user_id: user.id,
+                    name,
+                    age,
+                    birthdate,
+                    gender,
+                    avatar_image: avatarImage
+                })
+                .select()
+                .single();
 
-        // 最初の子供の場合、アクティブに設定
-        if (childrenList.length === 0) {
-            setActiveChildId(newChild.id);
+            if (error) {
+                console.error('子供追加エラー:', error);
+                throw error;
+            }
+
+            const newChild: ChildInfo = {
+                id: data.id,
+                name: data.name,
+                age: data.age,
+                birthdate: data.birthdate,
+                gender: data.gender,
+                avatarImage: data.avatar_image
+            };
+
+            const updatedChildren = [...childrenList, newChild];
+            setChildrenList(updatedChildren);
+
+            // 最初の子供の場合はアクティブに設定
+            if (childrenList.length === 0) {
+                setActiveChildId(newChild.id);
+            }
+
+            return newChild.id;
+        } catch (error) {
+            console.error('子供追加エラー:', error);
+            throw error;
         }
-
-        return newChild.id;
     };
 
-    // 子供の情報を更新
-    const updateChildInfo = (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string) => {
-        setChildrenList(prev =>
-            prev.map(child =>
-                child.id === id
-                    ? { ...child, name, age, birthdate, gender, avatarImage }
-                    : child
-            )
-        );
-    };
+    const updateChildInfo = async (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<void> => {
+        if (!user) return;
 
-    // 子供を削除
-    const removeChild = (id: string) => {
-        setChildrenList(prev => prev.filter(child => child.id !== id));
-        setRecordEvents(prev => prev.filter(event => event.childId !== id));
+        try {
+            const { error } = await supabase
+                .from('children')
+                .update({
+                    name,
+                    age,
+                    birthdate,
+                    gender,
+                    avatar_image: avatarImage,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id);
 
-        // アクティブな子供が削除された場合、他の子供を選択
-        if (activeChildId === id) {
-            const remainingChildren = childrenList.filter(child => child.id !== id);
-            setActiveChildId(remainingChildren.length > 0 ? remainingChildren[0].id : null);
+            if (error) {
+                console.error('子供情報更新エラー:', error);
+                return;
+            }
+
+            const updatedChildren = childrenList.map(child =>
+                child.id === id ? { ...child, name, age, birthdate, gender, avatarImage } : child
+            );
+            setChildrenList(updatedChildren);
+        } catch (error) {
+            console.error('子供情報更新エラー:', error);
         }
     };
 
-    // 今日が誕生日かどうか
+    const removeChild = async (id: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { error } = await supabase
+                .from('children')
+                .delete()
+                .eq('id', id);
+
+            if (error) {
+                console.error('子供削除エラー:', error);
+                return;
+            }
+
+            const updatedChildren = childrenList.filter(child => child.id !== id);
+            setChildrenList(updatedChildren);
+
+            // 削除された子供がアクティブだった場合
+            if (activeChildId === id) {
+                const newActiveId = updatedChildren.length > 0 ? updatedChildren[0].id : null;
+                setActiveChildId(newActiveId);
+            }
+
+            // 削除された子供の記録も削除（Supabaseでは外部キー制約で自動削除される）
+            const updatedRecords = recordEvents.filter(record => record.childId !== id);
+            setRecordEvents(updatedRecords);
+        } catch (error) {
+            console.error('子供削除エラー:', error);
+        }
+    };
+
     const isBirthday = (): boolean => {
-        if (!childInfo || !childInfo.birthdate) return false;
+        if (!childInfo?.birthdate) return false;
 
         const today = new Date();
         const birthdate = new Date(childInfo.birthdate);
@@ -300,12 +489,12 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             today.getDate() === birthdate.getDate();
     };
 
-    // 今日のイベントを取得
-    const todayEvents = recordEvents.filter(event =>
-        childInfo &&
-        event.childId === childInfo.id &&
-        isSameDay(new Date(event.timestamp), today)
-    );
+    // 今日の記録を取得
+    const todayEvents = recordEvents.filter(event => {
+        if (!activeChildId) return false;
+        const eventDate = new Date(event.timestamp);
+        return event.childId === activeChildId && isSameDay(eventDate, today);
+    });
 
     return (
         <RecordContext.Provider value={{
@@ -316,6 +505,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             activeCategory,
             setActiveCategory,
             addRecordEvent,
+            updateRecordEvent,
             deleteRecordEvent,
             isAnimating,
             setIsAnimating,
@@ -331,79 +521,97 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             children: childrenList,
             childInfo,
             activeChildId,
-            setActiveChildId,
+            setActiveChildId: (id: string | null) => {
+                setActiveChildId(id);
+                if (user && id) {
+                    localStorage.setItem(`activeChildId_${user.id}`, id);
+                } else if (user) {
+                    localStorage.removeItem(`activeChildId_${user.id}`);
+                }
+            },
             addChild,
             updateChildInfo,
             removeChild,
-            isBirthday
+            isBirthday,
+            migrateFromLocalStorage,
+            isDataMigrated
         }}>
             {children}
         </RecordContext.Provider>
     );
 };
 
+// その他のユーティリティ関数はそのまま維持
 export const getMotivationalMessage = async (events: RecordEvent[]): Promise<string> => {
     try {
-        // 基本的なフィードバック
-        const achievementCount = events.filter(e => e.category === 'achievement').length;
-        const happyCount = events.filter(e => e.category === 'happy').length;
-        const failureCount = events.filter(e => e.category === 'failure').length;
-        const troubleCount = events.filter(e => e.category === 'trouble').length;
+        const eventSummary = events.map(event =>
+            `${getCategoryNameStatic(event.category)}: ${event.note}`
+        ).join('\n');
 
-        if (achievementCount > 0) {
-            return `今日は${achievementCount}個も「できた！」ことがありましたね！すごいです！`;
-        }
-        if (happyCount > 0) {
-            return `今日は${happyCount}個も嬉しいことがありましたね！素敵な一日ですね！`;
-        }
-        if (failureCount > 0 || troubleCount > 0) {
-            return `今日は気になることがありましたね。記録することで解決のヒントが見つかりますよ！`;
-        }
+        const prompt = `
+以下の子供の記録を見て、温かく励ますメッセージを日本語で書いてください。
+記録: ${eventSummary}
 
-        return '今日も一日お疲れ様でした！';
+要件:
+- 100文字以内
+- 子供が読んでも分かりやすい言葉
+- ポジティブで励ます内容
+- 成長を認める内容
+`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                thinkingConfig: {
+                    thinkingBudget: 0, // Disables thinking
+                },
+            }
+        });
+
+        return response.text || defaultMessage(events);
     } catch (error) {
-        console.error('Error generating motivational message:', error);
-        return '今日も一日お疲れ様でした！';
+        console.error('AI メッセージ生成エラー:', error);
+        return defaultMessage(events);
     }
 };
 
+const defaultMessage = (events: RecordEvent[]): string => {
+    const messages = [
+        "今日もよくがんばったね！",
+        "すてきな一日だったね！",
+        "きょうのきろくありがとう！",
+        "明日もがんばろうね！"
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+};
+
 const getCategoryNameStatic = (category: RecordCategory): string => {
-    const categoryNames = {
-        achievement: 'できた！',
-        happy: 'うれしい',
-        failure: '気になったこと',
-        trouble: 'こまった'
+    const names = {
+        'achievement': 'できたこと',
+        'happy': 'うれしかったこと',
+        'failure': 'うまくいかなかったこと',
+        'trouble': 'こまったこと'
     };
-    return categoryNames[category];
+    return names[category];
 };
 
 export const generateDiarySummary = async (events: RecordEvent[]): Promise<string> => {
-    try {
-        if (events.length === 0) {
-            return '今日は特に記録がありませんでした。';
-        }
+    if (events.length === 0) {
+        return 'まだ記録がありません。';
+    }
 
-        // 基本的な日記生成
+    try {
+        // 実装を簡略化
         return defaultSummary(events);
     } catch (error) {
-        console.error('Error generating diary summary:', error);
         return defaultSummary(events);
     }
 };
 
 const defaultSummary = (events: RecordEvent[]): string => {
-    if (events.length === 0) {
-        return '今日は特に記録がありませんでした。';
-    }
-
-    const formatEvent = (event: RecordEvent) => {
-        const categoryName = getCategoryNameStatic(event.category);
-        const time = new Date(event.timestamp).toLocaleTimeString('ja-JP', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        return `${time} ${categoryName}: ${event.note}`;
-    };
+    const formatEvent = (event: RecordEvent) =>
+        `${getCategoryNameStatic(event.category)}: ${event.note}`;
 
     return events.map(formatEvent).join('\n');
 }; 

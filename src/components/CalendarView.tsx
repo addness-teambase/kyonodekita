@@ -14,7 +14,8 @@ const CalendarView: React.FC = () => {
         setSelectedDate,
         addCalendarEvent,
         deleteCalendarEvent,
-        getCalendarEventsForDate
+        getCalendarEventsForDate,
+        deleteRecordEvent
     } = useRecord();
 
     const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false);
@@ -23,6 +24,8 @@ const CalendarView: React.FC = () => {
     const [newEventDescription, setNewEventDescription] = useState('');
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [eventToDelete, setEventToDelete] = useState<string | null>(null);
+    const [isRecordDeleteConfirmOpen, setIsRecordDeleteConfirmOpen] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
 
     // トグル用の状態
     const [isEventsOpen, setIsEventsOpen] = useState(true);
@@ -89,6 +92,21 @@ const CalendarView: React.FC = () => {
             deleteCalendarEvent(eventToDelete);
             setIsDeleteConfirmOpen(false);
             setEventToDelete(null);
+        }
+    };
+
+    // 記録削除確認モーダルを開く
+    const openRecordDeleteConfirmModal = (recordId: string) => {
+        setRecordToDelete(recordId);
+        setIsRecordDeleteConfirmOpen(true);
+    };
+
+    // 記録削除を実行
+    const handleDeleteRecord = () => {
+        if (recordToDelete) {
+            deleteRecordEvent(recordToDelete);
+            setIsRecordDeleteConfirmOpen(false);
+            setRecordToDelete(null);
         }
     };
 
@@ -244,12 +262,30 @@ const CalendarView: React.FC = () => {
                                                 break;
                                         }
 
+                                        const canDelete = isToday(selectedDate) && isToday(new Date(record.timestamp));
+                                        
                                         return (
                                             <li key={record.id} className={`p-3 ${bgColor} rounded-lg border-l-4 ${borderColor}`}>
                                                 <div className="flex justify-between items-center mb-1">
-                                                    <span className={`text-xs font-medium ${textColor}`}>
-                                                        {format(new Date(record.timestamp), 'HH:mm')}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-xs font-medium ${textColor}`}>
+                                                            {format(new Date(record.timestamp), 'HH:mm')}
+                                                        </span>
+                                                        {canDelete && (
+                                                            <span className="text-2xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                                                削除可能
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {canDelete && (
+                                                        <button
+                                                            onClick={() => openRecordDeleteConfirmModal(record.id)}
+                                                            className="text-red-400 hover:text-red-600 transition-colors p-1 rounded-full hover:bg-red-50"
+                                                            title="この記録を削除"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <p className="text-sm text-gray-700">{record.note}</p>
                                             </li>
@@ -459,6 +495,41 @@ const CalendarView: React.FC = () => {
                                 type="button"
                                 className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-md"
                                 onClick={handleDeleteEvent}
+                            >
+                                削除
+                            </button>
+                        </div>
+                    </Dialog.Panel>
+                </div>
+            </Dialog>
+
+            {/* 記録削除確認モーダル */}
+            <Dialog open={isRecordDeleteConfirmOpen} onClose={() => setIsRecordDeleteConfirmOpen(false)} className="relative z-50">
+                <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+
+                <div className="fixed inset-0 flex items-center justify-center p-4">
+                    <Dialog.Panel className="w-full max-w-xs rounded-lg bg-white p-6 shadow-xl">
+                        <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
+                            今日の記録を削除
+                        </Dialog.Title>
+
+                        <p className="text-sm text-gray-600 mb-4">
+                            この記録を削除してもよろしいですか？<br />
+                            <span className="text-xs text-gray-500">※今日の記録のみ削除可能です</span>
+                        </p>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+                                onClick={() => setIsRecordDeleteConfirmOpen(false)}
+                            >
+                                キャンセル
+                            </button>
+                            <button
+                                type="button"
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-md"
+                                onClick={handleDeleteRecord}
                             >
                                 削除
                             </button>

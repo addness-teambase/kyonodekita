@@ -1,18 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface User {
     id: string;
     username: string;
-    avatarImage?: string; // アバター画像（Base64エンコード）
 }
 
 interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
-    login: (username: string, password: string) => Promise<boolean>;
-    logout: () => void;
+    login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    signUp: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    logout: () => Promise<void>;
     isLoading: boolean;
-    updateUser: (username: string, avatarImage?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,66 +29,172 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
+// 簡単なパスワードハッシュ関数
+const hashPassword = (password: string): string => {
+    return btoa(password + 'kyou-no-dekita-salt');
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // 初期化時にローカルストレージからユーザー情報を読み込む
+    // ローカルストレージからユーザー情報を読み込み
     useEffect(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-        setIsLoading(false);
+        const loadUserFromStorage = async () => {
+            try {
+                const storedUser = localStorage.getItem('kyou-no-dekita-user');
+                if (storedUser) {
+                    const userData = JSON.parse(storedUser);
+
+                    // ユーザーデータの基本的なバリデーション
+                    if (userData && userData.id && userData.username) {
+                        try {
+                            // データベースからユーザー情報を再確認
+                            const { data: dbUser, error } = await supabase
+                                .from('users')
+                                .select('id, username')
+                                .eq('id', userData.id)
+                                .single();
+
+                            if (dbUser && !error) {
+                                console.log('ユーザー情報を復元しました:', dbUser.username);
+                                setUser(dbUser);
+                            } else {
+                                console.log('データベースでユーザーが見つかりません。ローカルデータを削除します。');
+                                localStorage.removeItem('kyou-no-dekita-user');
+                            }
+                        } catch (dbError) {
+                            console.log('データベース接続エラー。ローカルデータを削除します:', dbError);
+                            localStorage.removeItem('kyou-no-dekita-user');
+                        }
+                    } else {
+                        console.log('無効なユーザーデータ。ローカルデータを削除します。');
+                        localStorage.removeItem('kyou-no-dekita-user');
+                    }
+                } else {
+                    console.log('ローカルストレージにユーザー情報がありません。');
+                }
+            } catch (error) {
+                console.error('ユーザー読み込みエラー:', error);
+                localStorage.removeItem('kyou-no-dekita-user');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadUserFromStorage();
     }, []);
 
-    // シンプルなログイン機能（実際のアプリでは適切な認証を実装してください）
-    const login = async (username: string, password: string): Promise<boolean> => {
-        setIsLoading(true);
+    const signUp = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            setIsLoading(true);
+            console.log('サインアップ開始:', { username, passwordLength: password.length });
 
-        // 実際のアプリではAPIリクエストを行い、サーバーサイドで認証を行います
-        // 今回はシンプルな実装のため、すべてのログインを許可します
-        if (username.trim() !== '' && password.trim() !== '') {
-            const newUser: User = {
-                id: crypto.randomUUID(),
-                username
-            };
+            // ユーザー名の重複チェック
+            const { data: existingUser, error: checkError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
 
-            setUser(newUser);
-            localStorage.setItem('user', JSON.stringify(newUser));
+            if (existingUser) {
+                console.log('ユーザー名重複:', username);
+                return { success: false, error: 'このユーザー名は既に使用されています' };
+            }
+
+            // パスワードをハッシュ化
+            const hashedPassword = hashPassword(password);
+
+            // ユーザーを作成
+            const { data: newUser, error } = await supabase
+                .from('users')
+                .insert({
+                    username: username,
+                    password: hashedPassword
+                })
+                .select('id, username')
+                .single();
+
+            console.log('サインアップ結果:', { newUser, error });
+
+            if (error) {
+                console.error('ユーザー作成エラー:', error);
+                return { success: false, error: '登録に失敗しました' };
+            }
+
+            if (newUser) {
+                console.log('ユーザー作成成功:', newUser.id);
+                setUser(newUser);
+                localStorage.setItem('kyou-no-dekita-user', JSON.stringify(newUser));
+                return { success: true };
+            }
+
+            return { success: false, error: '登録に失敗しました' };
+        } catch (error) {
+            console.error('登録エラー:', error);
+            return { success: false, error: '登録に失敗しました' };
+        } finally {
             setIsLoading(false);
-            return true;
-        }
-
-        setIsLoading(false);
-        return false;
-    };
-
-    const logout = () => {
-        setUser(null);
-        localStorage.removeItem('user');
-    };
-
-    const updateUser = (username: string, avatarImage?: string) => {
-        if (user) {
-            const updatedUser: User = {
-                ...user,
-                username,
-                avatarImage
-            };
-            setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
         }
     };
+
+    const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            setIsLoading(true);
+            console.log('ログイン開始:', { username, passwordLength: password.length });
+
+            // パスワードをハッシュ化
+            const hashedPassword = hashPassword(password);
+
+            // ユーザーを認証
+            const { data: userData, error } = await supabase
+                .from('users')
+                .select('id, username')
+                .eq('username', username)
+                .eq('password', hashedPassword)
+                .single();
+
+            console.log('ログイン結果:', { userData, error });
+
+            if (error || !userData) {
+                console.error('ログインエラー:', error);
+                return { success: false, error: 'ユーザー名またはパスワードが間違っています' };
+            }
+
+            console.log('ログイン成功:', userData.id);
+            setUser(userData);
+            localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userData));
+            return { success: true };
+        } catch (error) {
+            console.error('ログインエラー:', error);
+            return { success: false, error: 'ログインに失敗しました' };
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const logout = async (): Promise<void> => {
+        try {
+            setIsLoading(true);
+            setUser(null);
+            localStorage.removeItem('kyou-no-dekita-user');
+        } catch (error) {
+            console.error('ログアウトエラー:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const isAuthenticated = !!user;
 
     return (
         <AuthContext.Provider value={{
             user,
-            isAuthenticated: !!user,
+            isAuthenticated,
             login,
+            signUp,
             logout,
-            isLoading,
-            updateUser
+            isLoading
         }}>
             {children}
         </AuthContext.Provider>

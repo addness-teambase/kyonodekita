@@ -1,9 +1,11 @@
 import { ChildObservation } from '../types';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const STORAGE_KEY = 'child-observation-records';
 
-const genAI = new GoogleGenerativeAI('AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A');
+const ai = new GoogleGenAI({
+  apiKey: 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
+});
 
 export const getObservations = (): ChildObservation[] => {
   try {
@@ -59,8 +61,6 @@ export const generateDiarySummary = async (stressEvents: ChildObservation[], goo
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const prompt = `
 以下の記録から、一日のサマリーを作成してください。
 
@@ -84,10 +84,17 @@ ${goodThingEvents.map(e => `- ${formatTime(e.timestamp)}: ${e.level}
 
 （ここに記録の本文）`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    return text || defaultSummary(stressEvents, goodThingEvents);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingBudget: 0, // Disables thinking
+        },
+      }
+    });
+
+    return response.text || defaultSummary(stressEvents, goodThingEvents);
   } catch (error) {
     console.error('Error generating diary summary:', error);
     return defaultSummary(stressEvents, goodThingEvents);
@@ -98,8 +105,6 @@ export const getMotivationalMessage = async (events: ChildObservation[]): Promis
   if (events.length === 0) return '';
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const prompt = `
 以下のストレス記録から、励ましのメッセージを作成してください。
 
@@ -114,9 +119,17 @@ ${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
 出力形式:
 （ここにメッセージ）`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || defaultMotivationalMessage();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingBudget: 0, // Disables thinking
+        },
+      }
+    });
+
+    return response.text || defaultMotivationalMessage();
   } catch (error) {
     console.error('Error generating motivational message:', error);
     return defaultMotivationalMessage();
@@ -127,8 +140,6 @@ export const getPraiseMessage = async (events: ChildObservation[]): Promise<stri
   if (events.length === 0) return '';
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const prompt = `
 以下の良かったことの記録から、褒めのメッセージを作成してください。
 
@@ -143,9 +154,17 @@ ${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
 出力形式:
 （ここにメッセージ）`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || defaultPraiseMessage();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingBudget: 0, // Disables thinking
+        },
+      }
+    });
+    
+    return response.text || defaultPraiseMessage();
   } catch (error) {
     console.error('Error generating praise message:', error);
     return defaultPraiseMessage();

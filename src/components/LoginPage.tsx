@@ -1,122 +1,204 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Lock, LogIn, AlertCircle, Heart } from 'lucide-react';
+import { User, Lock, LogIn, AlertCircle, Heart, UserPlus } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { login, isLoading } = useAuth();
+    const [mode, setMode] = useState<'login' | 'signup'>('login');
+    const [success, setSuccess] = useState('');
+    const { login, signUp, isLoading } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccess('');
 
         if (!username.trim() || !password.trim()) {
-            setError('保護者名とパスワードを入力してください');
+            setError('ユーザー名とパスワードを入力してください');
             return;
         }
 
-        const success = await login(username, password);
-        if (!success) {
-            setError('ログインに失敗しました');
+        if (username.length < 2) {
+            setError('ユーザー名は2文字以上で入力してください');
+            return;
+        }
+
+        if (password.length < 6) {
+            setError('パスワードは6文字以上で入力してください');
+            return;
+        }
+
+        try {
+            if (mode === 'login') {
+                console.log('ログイン試行:', { username, password: '***' });
+                const result = await login(username, password);
+                console.log('ログイン結果:', result);
+                if (!result.success) {
+                    setError(result.error || 'ログインに失敗しました');
+                }
+            } else {
+                console.log('サインアップ試行:', { username, password: '***' });
+                const result = await signUp(username, password);
+                console.log('サインアップ結果:', result);
+                if (result.success) {
+                    setSuccess('アカウントを作成しました！ログインしています...');
+                    // SignUpは成功時に自動的にログイン状態になるため、AuthContextがメインアプリに遷移させる
+                } else {
+                    setError(result.error || 'アカウント作成に失敗しました');
+                }
+            }
+        } catch (error) {
+            console.error('認証エラー:', error);
+            setError('予期しないエラーが発生しました');
         }
     };
 
+    const toggleMode = () => {
+        setMode(mode === 'login' ? 'signup' : 'login');
+        setError('');
+        setSuccess('');
+        setUsername('');
+        setPassword('');
+    };
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-orange-50 p-4">
-            <div className="w-full max-w-md">
-                <div className="bg-white rounded-3xl shadow-lg overflow-hidden border border-gray-100">
-                    {/* ヘッダー部分 - 育児アプリらしい優しいデザイン */}
-                    <div className="bg-gradient-to-r from-pink-400 to-orange-300 p-8 text-white text-center relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-12 -translate-x-12"></div>
-                        <div className="relative z-10">
-                            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4">
-                                <span className="text-3xl">✨</span>
-                            </div>
-                            <h1 className="text-2xl font-bold mb-2">きょうのできた</h1>
-                            <p className="text-white/90 text-sm font-medium">お子さまとの大切な毎日を記録</p>
-                        </div>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+            <div className="max-w-md w-full">
+                {/* アプリタイトル部分 */}
+                <div className="text-center mb-8">
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-500 rounded-full mb-4 shadow-lg">
+                        <Heart className="w-10 h-10 text-white" />
+                    </div>
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                        きょうのできた
+                    </h1>
+                    <p className="text-gray-600 text-sm">
+                        良かったことと不安に思ったことを簡単に記録
+                    </p>
+                </div>
+
+                {/* ログインフォーム */}
+                <div className="bg-white rounded-2xl p-6 shadow-md">
+                    <div className="text-center mb-6">
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                            {mode === 'login' ? 'ログイン' : 'アカウント作成'}
+                        </h2>
+                        <p className="text-sm text-gray-600">
+                            {mode === 'login'
+                                ? 'ユーザー名とパスワードでログイン'
+                                : '新しいユーザー名とパスワードを設定'
+                            }
+                        </p>
                     </div>
 
-                    <div className="p-8">
-                        <div className="text-center mb-8">
-                            <h2 className="text-xl font-bold text-gray-800 mb-2">おかえりなさい</h2>
-                            <p className="text-gray-500 text-sm">アカウントにログインしてください</p>
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg" role="alert">
+                            <div className="flex items-center">
+                                <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+                                <span className="text-sm text-red-700">{error}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {success && (
+                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg" role="alert">
+                            <div className="flex items-center">
+                                <Heart className="h-5 w-5 text-green-500 mr-2" />
+                                <span className="text-sm text-green-700">{success}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                                ユーザー名 <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <User className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                    id="username"
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="ユーザー名を入力"
+                                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
+                                    autoComplete="username"
+                                />
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">2文字以上で入力してください</p>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            {error && (
-                                <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm flex items-center gap-3 animate-slideInRight border border-red-100">
-                                    <AlertCircle size={20} className="flex-shrink-0" />
-                                    <span>{error}</span>
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                                パスワード <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Lock className="h-5 w-5 text-gray-400" />
                                 </div>
-                            )}
-
-                            <div>
-                                <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
-                                    保護者名
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                                        <User size={20} />
-                                    </div>
-                                    <input
-                                        id="username"
-                                        type="text"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-300 focus:border-pink-300 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                        placeholder="保護者名を入力"
-                                    />
-                                </div>
+                                <input
+                                    id="password"
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="パスワードを入力"
+                                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
+                                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                />
                             </div>
+                            <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
+                        </div>
 
-                            <div>
-                                <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                                    パスワード
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                                        <Lock size={20} />
-                                    </div>
-                                    <input
-                                        id="password"
-                                        type="password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-pink-300 focus:border-pink-300 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                        placeholder="パスワードを入力"
-                                    />
-                                </div>
-                            </div>
-
+                        <div className="pt-2">
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 text-white font-semibold py-4 px-4 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none disabled:hover:shadow-lg"
+                                className={`w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 {isLoading ? (
-                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
+                                    <div className="flex items-center">
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        処理中...
+                                    </div>
                                 ) : (
-                                    <>
-                                        <Heart size={18} className="fill-current" />
-                                        <span>ログイン</span>
-                                    </>
+                                    <div className="flex items-center">
+                                        {mode === 'login' ? (
+                                            <>
+                                                <LogIn className="h-5 w-5 mr-2" />
+                                                ログイン
+                                            </>
+                                        ) : (
+                                            <>
+                                                <UserPlus className="h-5 w-5 mr-2" />
+                                                アカウント作成
+                                            </>
+                                        )}
+                                    </div>
                                 )}
                             </button>
-                        </form>
-
-                        <div className="mt-6 text-center">
-                            <p className="text-xs text-gray-400">
-                                育児の記録を大切に保存します
-                            </p>
                         </div>
-                    </div>
+
+                        <div className="text-center pt-4 border-t border-gray-200">
+                            <button
+                                type="button"
+                                onClick={toggleMode}
+                                className="text-sm text-orange-600 hover:text-orange-500 transition-colors font-medium"
+                            >
+                                {mode === 'login'
+                                    ? '初回利用の方はこちら'
+                                    : '既存ユーザーの方はこちら'
+                                }
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
