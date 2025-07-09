@@ -22,8 +22,7 @@ interface GrowthRecord {
 }
 
 const GrowthRecords: React.FC = () => {
-    const { childInfo } = useRecord();
-    const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
+    const { childInfo, growthRecords, addGrowthRecord, updateGrowthRecord, deleteGrowthRecord } = useRecord();
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -121,20 +120,21 @@ const GrowthRecords: React.FC = () => {
         }));
     };
 
-    const handleAddRecord = () => {
+    const handleAddRecord = async () => {
         if (!newRecord.title.trim()) return;
 
-        const record: GrowthRecord = {
-            id: Date.now().toString(),
-            date: new Date(),
-            title: newRecord.title.trim(),
-            description: newRecord.description.trim(),
-            category: newRecord.category,
-            createdAt: new Date(),
-            media: newRecord.media
-        };
+        await addGrowthRecord(
+            newRecord.title.trim(),
+            newRecord.description.trim(),
+            newRecord.category,
+            newRecord.media ? {
+                type: newRecord.media.type,
+                data: newRecord.media.data,
+                name: newRecord.media.name,
+                size: newRecord.media.size
+            } : undefined
+        );
 
-        setGrowthRecords(prev => [record, ...prev]);
         setNewRecord({
             title: '',
             description: '',
@@ -159,20 +159,21 @@ const GrowthRecords: React.FC = () => {
         }
     };
 
-    const handleUpdateRecord = () => {
+    const handleUpdateRecord = async () => {
         if (!newRecord.title.trim() || !recordToEdit) return;
 
-        setGrowthRecords(prev => prev.map(record =>
-            record.id === recordToEdit
-                ? {
-                    ...record,
-                    title: newRecord.title.trim(),
-                    description: newRecord.description.trim(),
-                    category: newRecord.category,
-                    media: newRecord.media
-                }
-                : record
-        ));
+        await updateGrowthRecord(
+            recordToEdit,
+            newRecord.title.trim(),
+            newRecord.description.trim(),
+            newRecord.category,
+            newRecord.media ? {
+                type: newRecord.media.type,
+                data: newRecord.media.data,
+                name: newRecord.media.name,
+                size: newRecord.media.size
+            } : undefined
+        );
 
         setNewRecord({
             title: '',
@@ -190,9 +191,9 @@ const GrowthRecords: React.FC = () => {
         setShowActionMenu(null);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (recordToDelete) {
-            setGrowthRecords(prev => prev.filter(record => record.id !== recordToDelete));
+            await deleteGrowthRecord(recordToDelete);
             setRecordToDelete(null);
         }
         setShowDeleteModal(false);
@@ -272,7 +273,7 @@ const GrowthRecords: React.FC = () => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {growthRecords.map((record) => {
+                        {growthRecords.filter(record => record.childId === childInfo?.id).map((record) => {
                             const categoryInfo = getCategoryInfo(record.category);
                             return (
                                 <div

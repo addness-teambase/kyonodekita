@@ -40,10 +40,11 @@ export interface ChildInfo {
 
 export interface GrowthRecord {
     id: string;
+    childId: string;
     date: Date;
     title: string;
     description: string;
-    category: string;
+    category: 'first_time' | 'milestone' | 'achievement' | 'memory';
     createdAt: Date;
     media?: {
         id: string;
@@ -89,6 +90,11 @@ interface RecordContextType {
     isBirthday: () => boolean;
     migrateFromLocalStorage: () => Promise<void>;
     isDataMigrated: boolean;
+    // 成長記録関連
+    growthRecords: GrowthRecord[];
+    addGrowthRecord: (title: string, description: string, category: 'first_time' | 'milestone' | 'achievement' | 'memory', media?: { type: 'image' | 'video'; data: string; name: string; size: number; }) => Promise<void>;
+    updateGrowthRecord: (id: string, title: string, description: string, category: 'first_time' | 'milestone' | 'achievement' | 'memory', media?: { type: 'image' | 'video'; data: string; name: string; size: number; }) => Promise<void>;
+    deleteGrowthRecord: (id: string) => Promise<void>;
 }
 
 interface RecordProviderProps {
@@ -109,6 +115,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const { user, isAuthenticated } = useAuth();
     const [recordEvents, setRecordEvents] = useState<RecordEvent[]>([]);
     const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+    const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
     const [childrenList, setChildrenList] = useState<ChildInfo[]>([]);
     const [activeChildId, setActiveChildId] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState(startOfToday());
@@ -200,6 +207,35 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                     description: event.description
                 }));
                 setCalendarEvents(calendarList);
+            }
+
+            // 成長記録の読み込み
+            const { data: growthRecords, error: growthError } = await supabase
+                .from('growth_records')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (growthError) {
+                console.error('成長記録データの読み込みエラー:', growthError);
+            } else if (growthRecords) {
+                const growthList = growthRecords.map(record => ({
+                    id: record.id,
+                    childId: record.child_id,
+                    date: new Date(record.date),
+                    title: record.title,
+                    description: record.description || '',
+                    category: record.category as 'first_time' | 'milestone' | 'achievement' | 'memory',
+                    createdAt: new Date(record.created_at),
+                    media: record.media_data ? {
+                        id: record.id,
+                        type: record.media_type as 'image' | 'video',
+                        data: record.media_data,
+                        name: record.media_name || '',
+                        size: record.media_size || 0
+                    } : null
+                }));
+                setGrowthRecords(growthList);
             }
 
         } catch (error) {
@@ -379,6 +415,141 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         return names[category];
     };
 
+    // 成長記録の追加
+    const addGrowthRecord = async (
+        title: string,
+        description: string,
+        category: 'first_time' | 'milestone' | 'achievement' | 'memory',
+        media?: { type: 'image' | 'video'; data: string; name: string; size: number; }
+    ): Promise<void> => {
+        if (!user || !activeChildId) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('growth_records')
+                .insert({
+                    user_id: user.id,
+                    child_id: activeChildId,
+                    title,
+                    description,
+                    category,
+                    media_type: media?.type || null,
+                    media_data: media?.data || null,
+                    media_name: media?.name || null,
+                    media_size: media?.size || null,
+                    date: new Date().toISOString().split('T')[0]
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('成長記録追加エラー:', error);
+                return;
+            }
+
+            const newRecord: GrowthRecord = {
+                id: data.id,
+                childId: data.child_id,
+                date: new Date(data.date),
+                title: data.title,
+                description: data.description || '',
+                category: data.category,
+                createdAt: new Date(data.created_at),
+                media: data.media_data ? {
+                    id: data.id,
+                    type: data.media_type,
+                    data: data.media_data,
+                    name: data.media_name || '',
+                    size: data.media_size || 0
+                } : null
+            };
+
+            setGrowthRecords(prev => [newRecord, ...prev]);
+        } catch (error) {
+            console.error('成長記録追加エラー:', error);
+        }
+    };
+
+    // 成長記録の更新
+    const updateGrowthRecord = async (
+        id: string,
+        title: string,
+        description: string,
+        category: 'first_time' | 'milestone' | 'achievement' | 'memory',
+        media?: { type: 'image' | 'video'; data: string; name: string; size: number; }
+    ): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('growth_records')
+                .update({
+                    title,
+                    description,
+                    category,
+                    media_type: media?.type || null,
+                    media_data: media?.data || null,
+                    media_name: media?.name || null,
+                    media_size: media?.size || null,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .eq('user_id', user.id)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('成長記録更新エラー:', error);
+                return;
+            }
+
+            const updatedRecord: GrowthRecord = {
+                id: data.id,
+                childId: data.child_id,
+                date: new Date(data.date),
+                title: data.title,
+                description: data.description || '',
+                category: data.category,
+                createdAt: new Date(data.created_at),
+                media: data.media_data ? {
+                    id: data.id,
+                    type: data.media_type,
+                    data: data.media_data,
+                    name: data.media_name || '',
+                    size: data.media_size || 0
+                } : null
+            };
+
+            setGrowthRecords(prev => prev.map(record => 
+                record.id === id ? updatedRecord : record
+            ));
+        } catch (error) {
+            console.error('成長記録更新エラー:', error);
+        }
+    };
+
+    // 成長記録の削除
+    const deleteGrowthRecord = async (id: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const { error } = await supabase
+                .from('growth_records')
+                .delete()
+                .eq('id', id)
+                .eq('user_id', user.id);
+
+            if (error) {
+                console.error('成長記録削除エラー:', error);
+                return;
+            }
+
+            setGrowthRecords(prev => prev.filter(record => record.id !== id));
+        } catch (error) {
+            console.error('成長記録削除エラー:', error);
+        }
+    };
+
     const addChild = async (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<string> => {
         if (!user) throw new Error('ユーザーが認証されていません');
 
@@ -541,7 +712,12 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             removeChild,
             isBirthday,
             migrateFromLocalStorage,
-            isDataMigrated
+            isDataMigrated,
+            // 成長記録関連
+            growthRecords,
+            addGrowthRecord,
+            updateGrowthRecord,
+            deleteGrowthRecord
         }}>
             {children}
         </RecordContext.Provider>

@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS chat_messages CASCADE;
 DROP TABLE IF EXISTS chat_sessions CASCADE;
 DROP TABLE IF EXISTS daily_records CASCADE;
 DROP TABLE IF EXISTS calendar_events CASCADE;
+DROP TABLE IF EXISTS growth_records CASCADE;
 DROP TABLE IF EXISTS records CASCADE;
 DROP TABLE IF EXISTS children CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -88,6 +89,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
+-- Create growth_records table
+CREATE TABLE IF NOT EXISTS growth_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  child_id UUID NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL CHECK (category IN ('first_time', 'milestone', 'achievement', 'memory')),
+  media_type TEXT CHECK (media_type IN ('image', 'video')),
+  media_data TEXT, -- Base64エンコードされた画像/動画データ
+  media_name TEXT,
+  media_size INTEGER,
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
 -- Create an updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -104,6 +122,7 @@ DROP TRIGGER IF EXISTS update_records_updated_at ON records;
 DROP TRIGGER IF EXISTS update_calendar_events_updated_at ON calendar_events;
 DROP TRIGGER IF EXISTS update_daily_records_updated_at ON daily_records;
 DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON chat_sessions;
+DROP TRIGGER IF EXISTS update_growth_records_updated_at ON growth_records;
 
 -- Create triggers for updated_at columns
 CREATE TRIGGER update_users_updated_at
@@ -136,6 +155,11 @@ CREATE TRIGGER update_chat_sessions_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_growth_records_updated_at
+  BEFORE UPDATE ON growth_records
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
 -- Disable Row Level Security (RLS) for custom authentication
 -- Since we're using custom authentication, we rely on application-level security
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
@@ -145,6 +169,7 @@ ALTER TABLE calendar_events DISABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_records DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_sessions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE growth_records DISABLE ROW LEVEL SECURITY;
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -159,6 +184,10 @@ CREATE INDEX IF NOT EXISTS idx_daily_records_user_id ON daily_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_records_date ON daily_records(date);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_growth_records_user_id ON growth_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_growth_records_child_id ON growth_records(child_id);
+CREATE INDEX IF NOT EXISTS idx_growth_records_date ON growth_records(date);
+CREATE INDEX IF NOT EXISTS idx_growth_records_category ON growth_records(category);
 
 -- =============================================================================
 -- MIGRATION SECTION: 既存のデータベースを更新する場合のみ実行
