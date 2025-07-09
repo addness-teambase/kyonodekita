@@ -547,7 +547,7 @@ function AppContent() {
 
   // Google Gemini AI インスタンス
   const ai = new GoogleGenAI({
-    apiKey: 'AIzaSyBW0cLo-OZbPYqNVBFXMbB41-0qC5Q2nuk'
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyBW0cLo-OZbPYqNVBFXMbB41-0qC5Q2nuk'
   });
 
   // AI応答を生成（実際のGemini API使用）

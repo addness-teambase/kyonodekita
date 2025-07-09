@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
 const ai = new GoogleGenAI({
-    apiKey: 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
 });
 
 // カテゴリータイプの定義
