@@ -15,7 +15,8 @@ const CalendarView: React.FC = () => {
         addCalendarEvent,
         deleteCalendarEvent,
         getCalendarEventsForDate,
-        deleteRecordEvent
+        deleteRecordEvent,
+        activeChildId
     } = useRecord();
 
     const [isAddEventModalOpen, setIsAddEventModalOpen] = useState(false);
@@ -112,7 +113,10 @@ const CalendarView: React.FC = () => {
 
     // 特定の日付の記録を取得
     const getRecordsForDate = (date: Date) => {
-        return recordEvents.filter(record => isSameDay(new Date(record.timestamp), date));
+        return recordEvents.filter(record => 
+            isSameDay(new Date(record.timestamp), date) && 
+            record.childId === activeChildId
+        );
     };
 
     // 選択された日付の詳細表示

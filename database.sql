@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE TABLE IF NOT EXISTS calendar_events (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  child_id UUID NOT NULL REFERENCES children(id) ON DELETE CASCADE,
   date DATE NOT NULL,
   title TEXT NOT NULL,
   time TEXT,

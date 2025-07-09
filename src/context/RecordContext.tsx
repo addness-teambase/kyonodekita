@@ -22,6 +22,7 @@ export interface RecordEvent {
 
 export interface CalendarEvent {
     id: string;
+    childId: string;
     date: string;
     title: string;
     time?: string;
@@ -192,6 +193,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             } else if (calendarEvents) {
                 const calendarList = calendarEvents.map(event => ({
                     id: event.id,
+                    childId: event.child_id,
                     date: event.date,
                     title: event.title,
                     time: event.time,
@@ -301,13 +303,14 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     };
 
     const addCalendarEvent = async (date: Date, title: string, time?: string, description?: string): Promise<void> => {
-        if (!user) return;
+        if (!user || !activeChildId) return;
 
         try {
             const { data, error } = await supabase
                 .from('calendar_events')
                 .insert({
                     user_id: user.id,
+                    child_id: activeChildId,
                     date: format(date, 'yyyy-MM-dd'),
                     title,
                     time,
@@ -323,6 +326,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
             const newEvent: CalendarEvent = {
                 id: data.id,
+                childId: data.child_id,
                 date: data.date,
                 title: data.title,
                 time: data.time,
@@ -359,7 +363,10 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
     const getCalendarEventsForDate = (date: Date): CalendarEvent[] => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return calendarEvents.filter(event => event.date === dateStr);
+        return calendarEvents.filter(event => 
+            event.date === dateStr && 
+            event.childId === activeChildId
+        );
     };
 
     const getCategoryName = (category: RecordCategory): string => {
