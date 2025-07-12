@@ -2,12 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* スマホ対応のビューポート設定 */
+:root {
+  --vh: 1vh;
+  --screen-height: 100vh;
+}
+
 /* スクロールの挙動を改善 */
-html,
-body {
+html {
+  height: 100%;
+  height: 100dvh;
+  /* 動的ビューポート高さ */
   scroll-behavior: smooth;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
+
+body {
+  height: 100%;
+  height: 100dvh;
+  /* 動的ビューポート高さ */
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  overflow-x: hidden;
+  touch-action: pan-y;
+  /* iOS Safariでのバウンスを防ぐ */
+  -webkit-overscroll-behavior: none;
+  overscroll-behavior: none;
+}
+
+/* ルートコンテナの設定 */
+#root {
+  height: 100%;
+  height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
 }
 
 /* すべてのボタンとクリック可能な要素のタップハイライトを無効化 */
@@ -18,6 +54,9 @@ body {
   -moz-user-select: none !important;
   -ms-user-select: none !important;
   user-select: none !important;
+  /* スマホでの余分なスクロールを防ぐ */
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
 }
 
 /* テキスト入力欄だけは選択可能に */
@@ -90,13 +129,72 @@ span,
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* スマホ対応のレスポンシブユーティリティ */
 @layer utilities {
+
+  /* 動的ビューポート高さ */
+  .h-screen-dynamic {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .min-h-screen-dynamic {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .max-h-screen-dynamic {
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+
+  /* フルスクリーンコンテナ */
+  .full-screen-container {
+    height: 100vh;
+    height: 100dvh;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    -webkit-overscroll-behavior: none;
+  }
+
+  /* スクロール可能なコンテナ */
+  .scroll-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    -webkit-overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* スマホでの最適化されたパディング */
+  .mobile-safe-padding {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
   .animation-delay-100 {
     animation-delay: 0.1s;
   }
 
   .animation-delay-200 {
     animation-delay: 0.2s;
+  }
+}
+
+/* JavaScript用の動的ビューポート高さ計算 */
+@supports (height: 100dvh) {
+  .h-screen-dynamic {
+    height: 100dvh;
+  }
+
+  .min-h-screen-dynamic {
+    min-height: 100dvh;
+  }
+
+  .max-h-screen-dynamic {
+    max-height: 100dvh;
   }
 }
 
@@ -193,4 +291,63 @@ span,
   opacity: 0;
   transform: translate3d(0, -10px, 0);
   transition: opacity 300ms, transform 300ms;
+}
+
+/* スマホ専用のメディアクエリ */
+@media (max-width: 768px) {
+
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  html,
+  body {
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* スマホでのタッチ操作を最適化 */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* 入力フィールドのタッチ操作は許可 */
+  input,
+  textarea,
+  select {
+    touch-action: auto;
+  }
+
+  /* スマホでのフォントサイズ調整を防ぐ */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+
+  /* カレンダー画面のスクロール問題を解決 */
+  .calendar-content {
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  /* 記録画面のスクロール問題を解決 */
+  .record-content {
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+    padding-bottom: 120px;
+  }
+
+  /* スクロール感を抑制 */
+  .scroll-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
+  }
+
+  /* タッチスクロールの感度を調整 */
+  .scroll-container {
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
 }

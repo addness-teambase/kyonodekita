@@ -203,8 +203,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                     childId: event.child_id,
                     date: event.date,
                     title: event.title,
-                    time: event.time,
-                    description: event.description
+                    time: stripSeconds(event.time),
+                    description: event.description && event.description.trim() !== '' ? event.description.trim() : null
                 }));
                 setCalendarEvents(calendarList);
             }
@@ -338,10 +338,28 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         }
     };
 
+    const formatTimeForDB = (time?: string | null): string | null => {
+        if (!time) return null;
+        const trimmed = time.trim();
+        if (trimmed === '') return null;
+        // 既に秒が含まれている場合はそのまま
+        if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+        // HH:MM 形式なら HH:MM:00 に変換
+        if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+        return trimmed; // それ以外はそのまま
+    };
+
+    const stripSeconds = (time?: string | null): string | null => {
+        if (!time) return null;
+        return time.substring(0, 5); // HH:MM:SS -> HH:MM
+    };
+
     const addCalendarEvent = async (date: Date, title: string, time?: string, description?: string): Promise<void> => {
         if (!user || !activeChildId) return;
 
         try {
+            const timeValue = formatTimeForDB(time);
+
             const { data, error } = await supabase
                 .from('calendar_events')
                 .insert({
@@ -349,8 +367,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                     child_id: activeChildId,
                     date: format(date, 'yyyy-MM-dd'),
                     title,
-                    time,
-                    description
+                    time: timeValue,
+                    description: description && description.trim() !== '' ? description.trim() : null
                 })
                 .select()
                 .single();
@@ -365,7 +383,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 childId: data.child_id,
                 date: data.date,
                 title: data.title,
-                time: data.time,
+                time: stripSeconds(data.time),
                 description: data.description
             };
 
@@ -399,17 +417,25 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
     const getCalendarEventsForDate = (date: Date): CalendarEvent[] => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return calendarEvents.filter(event => 
-            event.date === dateStr && 
+        const events = calendarEvents.filter(event =>
+            event.date === dateStr &&
             event.childId === activeChildId
         );
+
+        // 時間順でソート（時間がない場合は最後に配置）
+        return events.sort((a, b) => {
+            if (!a.time && !b.time) return 0;
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            return a.time.localeCompare(b.time);
+        });
     };
 
     const getCategoryName = (category: RecordCategory): string => {
         const names = {
             'achievement': 'できたこと',
             'happy': 'うれしかったこと',
-            'failure': 'うまくいかなかったこと',
+            'failure': '気になったこと',
             'trouble': 'こまったこと'
         };
         return names[category];
@@ -520,7 +546,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 } : null
             };
 
-            setGrowthRecords(prev => prev.map(record => 
+            setGrowthRecords(prev => prev.map(record =>
                 record.id === id ? updatedRecord : record
             ));
         } catch (error) {

@@ -31,6 +31,9 @@ const CalendarView: React.FC = () => {
     // トグル用の状態
     const [isEventsOpen, setIsEventsOpen] = useState(true);
     const [isRecordsOpen, setIsRecordsOpen] = useState(true);
+    
+    // カテゴリー別一覧表示用の状態
+    const [activeCategory, setActiveCategory] = useState<'achievement' | 'happy' | 'failure' | 'trouble' | null>(null);
 
     // カレンダー日付の生成（月表示用）
     const calendarDays = React.useMemo(() => {
@@ -74,6 +77,13 @@ const CalendarView: React.FC = () => {
     const handleAddEvent = () => {
         if (!newEventTitle.trim()) return;
 
+        console.log('予定追加:', {
+            title: newEventTitle,
+            time: newEventTime,
+            description: newEventDescription,
+            date: selectedDate
+        });
+
         addCalendarEvent(selectedDate, newEventTitle, newEventTime, newEventDescription);
         setIsAddEventModalOpen(false);
         setNewEventTitle('');
@@ -113,8 +123,8 @@ const CalendarView: React.FC = () => {
 
     // 特定の日付の記録を取得
     const getRecordsForDate = (date: Date) => {
-        return recordEvents.filter(record => 
-            isSameDay(new Date(record.timestamp), date) && 
+        return recordEvents.filter(record =>
+            isSameDay(new Date(record.timestamp), date) &&
             record.childId === activeChildId
         );
     };
@@ -132,29 +142,41 @@ const CalendarView: React.FC = () => {
         };
 
         return (
-            <div className="mt-4 bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
                 <h3 className="text-lg font-medium text-gray-800 mb-3">
                     {format(selectedDate, 'yyyy年MM月dd日(E)', { locale: ja })}
                 </h3>
 
-                {/* カテゴリー別の記録件数 */}
+                {/* カテゴリー別の記録件数（ボタン化） */}
                 <div className="grid grid-cols-4 gap-2 mb-4">
-                    <div className="bg-emerald-50 p-2 rounded-lg text-center">
+                    <button
+                        onClick={() => setActiveCategory('achievement')}
+                        className="bg-emerald-50 p-2 rounded-lg text-center border border-emerald-100 hover:bg-emerald-100 transition-colors"
+                    >
                         <span className="text-2xs text-gray-600">できた</span>
                         <p className="text-base font-semibold text-emerald-600">{categoryCounts.achievement}</p>
-                    </div>
-                    <div className="bg-sky-50 p-2 rounded-lg text-center">
+                    </button>
+                    <button
+                        onClick={() => setActiveCategory('happy')}
+                        className="bg-sky-50 p-2 rounded-lg text-center border border-sky-100 hover:bg-sky-100 transition-colors"
+                    >
                         <span className="text-2xs text-gray-600">嬉しい</span>
                         <p className="text-base font-semibold text-sky-600">{categoryCounts.happy}</p>
-                    </div>
-                    <div className="bg-amber-50 p-2 rounded-lg text-center">
+                    </button>
+                    <button
+                        onClick={() => setActiveCategory('failure')}
+                        className="bg-amber-50 p-2 rounded-lg text-center border border-amber-100 hover:bg-amber-100 transition-colors"
+                    >
                         <span className="text-2xs text-gray-600">気になった</span>
                         <p className="text-base font-semibold text-amber-600">{categoryCounts.failure}</p>
-                    </div>
-                    <div className="bg-rose-50 p-2 rounded-lg text-center">
+                    </button>
+                    <button
+                        onClick={() => setActiveCategory('trouble')}
+                        className="bg-rose-50 p-2 rounded-lg text-center border border-rose-100 hover:bg-rose-100 transition-colors"
+                    >
                         <span className="text-2xs text-gray-600">困った</span>
                         <p className="text-base font-semibold text-rose-600">{categoryCounts.trouble}</p>
-                    </div>
+                    </button>
                 </div>
 
                 {/* 予定セクション（トグル可能） */}
@@ -175,7 +197,7 @@ const CalendarView: React.FC = () => {
                             <div className="mb-3">
                                 <button
                                     onClick={openAddEventModal}
-                                    className="flex items-center justify-center w-full gap-2 py-2 bg-orange-100 hover:bg-orange-200 text-orange-600 rounded-lg transition-colors"
+                                    className="flex items-center justify-center w-full gap-2 py-3 bg-orange-100 hover:bg-orange-200 text-orange-600 rounded-lg transition-all duration-200 border border-orange-200 hover:shadow-sm"
                                 >
                                     <PlusCircle size={18} />
                                     <span className="font-medium">予定を追加</span>
@@ -183,35 +205,38 @@ const CalendarView: React.FC = () => {
                             </div>
 
                             {dayEvents.length === 0 ? (
-                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg text-center">
+                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                                     予定はありません
                                 </p>
                             ) : (
                                 <ul className="space-y-2">
-                                    {dayEvents.map(event => (
-                                        <li key={event.id} className="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-400">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <h5 className="text-sm font-medium text-gray-800">{event.title}</h5>
-                                                    {event.time && (
-                                                        <p className="text-xs text-orange-600 flex items-center mt-1">
-                                                            <Clock size={12} className="mr-1" />
-                                                            {event.time}
-                                                        </p>
-                                                    )}
-                                                    {event.description && (
-                                                        <p className="text-xs text-gray-600 mt-1">{event.description}</p>
-                                                    )}
+                                    {dayEvents.map(event => {
+                                        console.log('表示する予定:', event);
+                                        return (
+                                            <li key={event.id} className="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-400 transition-all duration-200 hover:shadow-sm">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex-1">
+                                                        <h5 className="text-sm font-medium text-gray-800 mb-1">{event.title}</h5>
+                                                        {event.time && event.time.trim() !== '' && (
+                                                            <p className="text-xs text-orange-600 flex items-center mb-1">
+                                                                <Clock size={12} className="mr-1" />
+                                                                {event.time}
+                                                            </p>
+                                                        )}
+                                                        {event.description && event.description.trim() !== '' && (
+                                                            <p className="text-xs text-gray-600 leading-relaxed">{event.description}</p>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => openDeleteConfirmModal(event.id)}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50 ml-2 flex-shrink-0"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => openDeleteConfirmModal(event.id)}
-                                                    className="text-gray-400 hover:text-red-500"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </li>
-                                    ))}
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             )}
                         </div>
@@ -233,7 +258,7 @@ const CalendarView: React.FC = () => {
                     {isRecordsOpen && (
                         <div className="mt-2">
                             {dayRecords.length === 0 ? (
-                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg text-center">
+                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                                     記録はありません
                                 </p>
                             ) : (
@@ -242,37 +267,45 @@ const CalendarView: React.FC = () => {
                                         let bgColor = 'bg-gray-50';
                                         let borderColor = 'border-gray-300';
                                         let textColor = 'text-gray-600';
+                                        let categoryLabel = '';
 
                                         switch (record.category) {
                                             case 'achievement':
                                                 bgColor = 'bg-emerald-50';
                                                 borderColor = 'border-emerald-400';
                                                 textColor = 'text-emerald-600';
+                                                categoryLabel = 'できたこと';
                                                 break;
                                             case 'happy':
                                                 bgColor = 'bg-sky-50';
                                                 borderColor = 'border-sky-400';
                                                 textColor = 'text-sky-600';
+                                                categoryLabel = 'うれしかったこと';
                                                 break;
                                             case 'failure':
                                                 bgColor = 'bg-amber-50';
                                                 borderColor = 'border-amber-400';
                                                 textColor = 'text-amber-600';
+                                                categoryLabel = '気になったこと';
                                                 break;
                                             case 'trouble':
                                                 bgColor = 'bg-rose-50';
                                                 borderColor = 'border-rose-400';
                                                 textColor = 'text-rose-600';
+                                                categoryLabel = 'こまったこと';
                                                 break;
                                         }
 
                                         const canDelete = isToday(selectedDate) && isToday(new Date(record.timestamp));
-                                        
+
                                         return (
-                                            <li key={record.id} className={`p-3 ${bgColor} rounded-lg border-l-4 ${borderColor}`}>
-                                                <div className="flex justify-between items-center mb-1">
+                                            <li key={record.id} className={`p-3 ${bgColor} rounded-lg border-l-4 ${borderColor} transition-all duration-200 hover:shadow-sm`}>
+                                                <div className="flex justify-between items-start mb-2">
                                                     <div className="flex items-center gap-2">
-                                                        <span className={`text-xs font-medium ${textColor}`}>
+                                                        <span className={`text-xs font-medium ${textColor} bg-white px-2 py-1 rounded-full shadow-sm`}>
+                                                            {categoryLabel}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
                                                             {format(new Date(record.timestamp), 'HH:mm')}
                                                         </span>
                                                         {canDelete && (
@@ -291,7 +324,7 @@ const CalendarView: React.FC = () => {
                                                         </button>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-700">{record.note}</p>
+                                                <p className="text-sm text-gray-700 leading-relaxed">{record.note}</p>
                                             </li>
                                         );
                                     })}
@@ -304,14 +337,123 @@ const CalendarView: React.FC = () => {
         );
     };
 
+    // カテゴリー別の記録一覧を表示
+    const renderCategoryRecords = () => {
+        if (!activeCategory) return null;
+
+        const dayRecords = getRecordsForDate(selectedDate);
+        const categoryRecords = dayRecords.filter(record => record.category === activeCategory);
+        const categoryNames = {
+            achievement: 'できたこと',
+            happy: 'うれしかったこと',
+            failure: '気になったこと',
+            trouble: 'こまったこと'
+        };
+
+        const categoryColors = {
+            achievement: {
+                bg: 'bg-emerald-50',
+                border: 'border-emerald-200',
+                text: 'text-emerald-700'
+            },
+            happy: {
+                bg: 'bg-sky-50',
+                border: 'border-sky-200',
+                text: 'text-sky-700'
+            },
+            failure: {
+                bg: 'bg-amber-50',
+                border: 'border-amber-200',
+                text: 'text-amber-700'
+            },
+            trouble: {
+                bg: 'bg-rose-50',
+                border: 'border-rose-200',
+                text: 'text-rose-700'
+            }
+        };
+
+        const colors = categoryColors[activeCategory];
+
+        return (
+            <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-800">
+                        {categoryNames[activeCategory]} ({categoryRecords.length}件)
+                    </h3>
+                    <button
+                        onClick={() => setActiveCategory(null)}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                {categoryRecords.length === 0 ? (
+                    <div className="text-center py-8">
+                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                            <span className="text-2xl">📝</span>
+                        </div>
+                        <p className="text-gray-500 text-sm">
+                            このカテゴリーの記録がありません
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {categoryRecords.map(record => {
+                            const canDelete = isToday(selectedDate) && isToday(new Date(record.timestamp));
+                            
+                            return (
+                                <div
+                                    key={record.id}
+                                    className={`p-4 rounded-xl ${colors.bg} border-l-4 ${colors.border}`}
+                                >
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-semibold ${colors.text}`}>
+                                                {categoryNames[activeCategory]}
+                                            </span>
+                                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                <Clock size={12} />
+                                                {format(new Date(record.timestamp), 'HH:mm')}
+                                            </div>
+                                            {canDelete && (
+                                                <span className="text-2xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                                    削除可能
+                                                </span>
+                                            )}
+                                        </div>
+                                        {canDelete && (
+                                            <button
+                                                onClick={() => openRecordDeleteConfirmModal(record.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                                title="削除"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
-        <div className="animate-slideUp">
+        <div className="animate-slideUp flex flex-col">
             {/* カレンダー本体 */}
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-lg p-4 shadow-sm flex-shrink-0">
                 <div className="flex justify-between items-center mb-4">
                     <button
                         onClick={handlePrevMonth}
-                        className="p-1 hover:bg-gray-100 rounded-full"
+                        className="p-1 hover:bg-gray-100 rounded-full transition-colors"
                     >
                         <ChevronDown size={18} className="rotate-90" />
                     </button>
@@ -320,7 +462,7 @@ const CalendarView: React.FC = () => {
                     </h3>
                     <button
                         onClick={handleNextMonth}
-                        className="p-1 hover:bg-gray-100 rounded-full"
+                        className="p-1 hover:bg-gray-100 rounded-full transition-colors"
                     >
                         <ChevronUp size={18} className="rotate-90" />
                     </button>
@@ -360,8 +502,8 @@ const CalendarView: React.FC = () => {
                             <button
                                 key={i}
                                 onClick={() => handleDateSelect(day)}
-                                className={`aspect-square flex flex-col items-center justify-start p-1 relative rounded-md border text-xs
-                                    ${isSelectedDay ? 'border-orange-400 bg-orange-50' : 'border-transparent hover:bg-gray-50'}
+                                className={`aspect-square flex flex-col items-center justify-start p-1 relative rounded-md border text-xs transition-all duration-200
+                                    ${isSelectedDay ? 'border-orange-400 bg-orange-50 shadow-sm' : 'border-transparent hover:bg-gray-50'}
                                     ${isCurrentDay ? 'font-bold' : ''}
                                 `}
                             >
@@ -391,8 +533,13 @@ const CalendarView: React.FC = () => {
                 </div>
             </div>
 
+            {/* カテゴリー別一覧表示 */}
+            {renderCategoryRecords()}
+
             {/* 選択した日の詳細 */}
-            {renderDayDetails()}
+            <div className="mt-4 pb-4">
+                {renderDayDetails()}
+            </div>
 
             {/* 予定追加モーダル */}
             <Dialog open={isAddEventModalOpen} onClose={() => setIsAddEventModalOpen(false)} className="relative z-50">
@@ -434,6 +581,7 @@ const CalendarView: React.FC = () => {
                                     value={newEventTime}
                                     onChange={(e) => setNewEventTime(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                                    placeholder="時間を選択（任意）"
                                 />
                             </div>
 

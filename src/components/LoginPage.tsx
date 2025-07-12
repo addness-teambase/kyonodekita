@@ -64,7 +64,7 @@ const LoginPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="full-screen-container bg-gray-50 flex items-center justify-center mobile-safe-padding">
             <div className="max-w-md w-full">
                 {/* アプリタイトル部分 */}
                 <div className="text-center mb-8">

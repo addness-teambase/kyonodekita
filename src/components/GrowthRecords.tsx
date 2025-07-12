@@ -40,6 +40,11 @@ const GrowthRecords: React.FC = () => {
     const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
     const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
 
+    // 性別に応じて敬称を返す関数
+    const getChildSuffix = (gender?: 'male' | 'female'): string => {
+        return gender === 'male' ? 'くん' : 'ちゃん';
+    };
+
     const categoryOptions = [
         { id: 'first_time', label: 'はじめてできたこと', icon: <Star className="w-5 h-5" />, color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
         { id: 'milestone', label: '成長の節目', icon: <Trophy className="w-5 h-5" />, color: 'text-emerald-600', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
@@ -238,7 +243,7 @@ const GrowthRecords: React.FC = () => {
                     <div>
                         <h1 className="text-xl font-bold text-gray-800">成長記録</h1>
                         <p className="text-sm text-gray-600 mt-1">
-                            {childInfo?.name}の成長の記録
+                            {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}の成長の記録` : 'お子さまの成長の記録'}
                         </p>
                     </div>
                     <button

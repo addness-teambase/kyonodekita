@@ -11,6 +11,7 @@ import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
 import BottomNavigationBar from './components/BottomNavigationBar';
 import CalendarView from './components/CalendarView';
+import RecordSummary from './components/RecordSummary';
 import { Dialog } from '@headlessui/react';
 
 // 生年月日から年齢を計算する関数
@@ -78,7 +79,7 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center p-4">
+        <div className="full-screen-container bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center mobile-safe-padding">
           <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
             <div className="mb-4">
               <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
@@ -107,6 +108,7 @@ function AppContent() {
     activeCategory,
     setActiveCategory,
     addRecordEvent,
+    updateRecordEvent,
     getCategoryName,
     childInfo,
     children,
@@ -132,6 +134,8 @@ function AppContent() {
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [isParentSettingsOpen, setIsParentSettingsOpen] = useState(false);
   const [parentName, setParentName] = useState(user?.username || '');
+
+
 
   // 編集する子供が変わったときにフォームを更新
   useEffect(() => {
@@ -335,6 +339,9 @@ function AppContent() {
   // 削除確認ダイアログの状態を追加
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+  
+  // ホーム画面のカテゴリー別一覧表示用の状態
+  const [homeActiveCategory, setHomeActiveCategory] = useState<RecordCategory | null>(null);
 
   // チャット機能の状態を追加
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -415,6 +422,8 @@ function AppContent() {
     setShowDeleteConfirm(false);
     setRecordToDelete(null);
   };
+
+
 
   // メッセージ送信機能
   const handleSendMessage = async () => {
@@ -786,10 +795,9 @@ ${userMessage}
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="text-base font-medium text-gray-700">
-                            {childInfo.name}{getChildSuffix(childInfo.gender)}（{childInfo.age}歳）
+                            {childInfo.name}{getChildSuffix(childInfo.gender)}
                           </p>
                         </div>
-                        <h3 className="text-xl font-bold text-pink-500 mt-1">今日のできたこと</h3>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -850,33 +858,165 @@ ${userMessage}
 
               {hasRecords ? (
                 <div className="space-y-4">
-                  {todaysFilteredRecords.map(record => {
-                    const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
-                    return (
-                      <div key={record.id} className={`p-5 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
-                        <div className="flex justify-between items-center mb-3">
-                          <span className={`text-base font-medium flex items-center gap-2 ${textColor}`}>
-                            {icon}
-                            {getCategoryName(record.category)}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500 flex items-center bg-white/60 px-3 py-1 rounded-full">
-                              <Clock size={14} className="mr-1" />
-                              {formatTime(new Date(record.timestamp))}
-                            </span>
-                            <button
-                              onClick={() => handleDeleteClick(record.id)}
-                              className="text-red-400 hover:text-red-600 transition-colors p-1.5 rounded-full hover:bg-red-50"
-                              title="この記録を削除"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-base text-gray-700 leading-relaxed">{record.note}</p>
+                  {/* 記録を始めるボタン - 常に表示 */}
+                  <div className="text-center py-4">
+                    <button
+                      onClick={() => setActiveTab('record')}
+                      className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none min-h-12"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      <PlusCircle size={20} />
+                      <span>記録を追加</span>
+                    </button>
+                  </div>
+
+                  {/* カテゴリー別ボタン */}
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    <button
+                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'achievement' ? null : 'achievement')}
+                      className={`p-3 rounded-xl text-center transition-all ${
+                        homeActiveCategory === 'achievement'
+                          ? 'bg-green-100 border-2 border-green-300'
+                          : 'bg-green-50 border border-green-200 hover:bg-green-100'
+                      }`}
+                    >
+                      <div className="text-xs text-gray-600 mb-1">できた</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {todaysFilteredRecords.filter(r => r.category === 'achievement').length}
                       </div>
-                    );
-                  })}
+                    </button>
+                    <button
+                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'happy' ? null : 'happy')}
+                      className={`p-3 rounded-xl text-center transition-all ${
+                        homeActiveCategory === 'happy'
+                          ? 'bg-blue-100 border-2 border-blue-300'
+                          : 'bg-blue-50 border border-blue-200 hover:bg-blue-100'
+                      }`}
+                    >
+                      <div className="text-xs text-gray-600 mb-1">嬉しい</div>
+                      <div className="text-lg font-bold text-blue-600">
+                        {todaysFilteredRecords.filter(r => r.category === 'happy').length}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'failure' ? null : 'failure')}
+                      className={`p-3 rounded-xl text-center transition-all ${
+                        homeActiveCategory === 'failure'
+                          ? 'bg-amber-100 border-2 border-amber-300'
+                          : 'bg-amber-50 border border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      <div className="text-xs text-gray-600 mb-1">気になった</div>
+                      <div className="text-lg font-bold text-amber-600">
+                        {todaysFilteredRecords.filter(r => r.category === 'failure').length}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'trouble' ? null : 'trouble')}
+                      className={`p-3 rounded-xl text-center transition-all ${
+                        homeActiveCategory === 'trouble'
+                          ? 'bg-red-100 border-2 border-red-300'
+                          : 'bg-red-50 border border-red-200 hover:bg-red-100'
+                      }`}
+                    >
+                      <div className="text-xs text-gray-600 mb-1">困った</div>
+                      <div className="text-lg font-bold text-red-600">
+                        {todaysFilteredRecords.filter(r => r.category === 'trouble').length}
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* カテゴリー別記録一覧 */}
+                  {homeActiveCategory && (
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-semibold text-gray-800">
+                          {getCategoryName(homeActiveCategory)} ({todaysFilteredRecords.filter(r => r.category === homeActiveCategory).length}件)
+                        </h4>
+                        <button
+                          onClick={() => setHomeActiveCategory(null)}
+                          className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {todaysFilteredRecords
+                          .filter(record => record.category === homeActiveCategory)
+                          .map(record => {
+                            const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
+                            return (
+                              <div key={record.id} className={`p-4 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-8 h-8 rounded-full ${bgColor.replace('bg-', 'bg-').replace('-50', '-100')} flex items-center justify-center`}>
+                                      <span className={textColor}>{icon}</span>
+                                    </div>
+                                    <div>
+                                      <span className={`text-sm font-semibold ${textColor}`}>
+                                        {getCategoryName(record.category)}
+                                      </span>
+                                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                        <Clock size={12} />
+                                        {formatTime(new Date(record.timestamp))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteClick(record.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                    title="削除"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                                <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 全記録一覧（カテゴリーが選択されていない場合） */}
+                  {!homeActiveCategory && (
+                    <div className="space-y-3">
+                      {todaysFilteredRecords.map(record => {
+                        const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
+                        return (
+                          <div key={record.id} className={`p-4 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-8 h-8 rounded-full ${bgColor.replace('bg-', 'bg-').replace('-50', '-100')} flex items-center justify-center`}>
+                                  <span className={textColor}>{icon}</span>
+                                </div>
+                                <div>
+                                  <span className={`text-sm font-semibold ${textColor}`}>
+                                    {getCategoryName(record.category)}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                                    <Clock size={12} />
+                                    {formatTime(new Date(record.timestamp))}
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteClick(record.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                title="削除"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                            <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-12">
@@ -1168,7 +1308,7 @@ ${userMessage}
         );
       case 'record':
         return (
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-4 pb-20 record-content">
             {/* 記録ヘッダー */}
             <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="text-center">
@@ -1248,43 +1388,14 @@ ${userMessage}
               </div>
             </div>
 
-            {/* 今日の記録一覧 */}
+            {/* 今日の記録一覧 - シンプル版 */}
             {hasRecords && (
-              <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                  <span className="mr-2">📋</span>
-                  今日の記録一覧
-                </h3>
-                <div className="space-y-3">
-                  {todaysFilteredRecords.map(record => {
-                    const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
-                    return (
-                      <div key={record.id} className={`p-4 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className={`text-sm font-medium flex items-center gap-2 ${textColor}`}>
-                            {icon}
-                            {getCategoryName(record.category)}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 flex items-center bg-white/60 px-2 py-1 rounded-full">
-                              <Clock size={12} className="mr-1" />
-                              {formatTime(new Date(record.timestamp))}
-                            </span>
-                            <button
-                              onClick={() => handleDeleteClick(record.id)}
-                              className="text-red-400 hover:text-red-600 transition-colors p-1 rounded-full hover:bg-red-50"
-                              title="この記録を削除"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed">{record.note}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <RecordSummary
+                records={todaysFilteredRecords}
+                onDeleteRecord={handleDeleteClick}
+                getCategoryName={getCategoryName}
+                formatTime={formatTime}
+              />
             )}
 
             {/* 記録モーダル */}
@@ -1352,7 +1463,7 @@ ${userMessage}
         );
       case 'calendar':
         return (
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-4 calendar-content">
             <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="text-center mb-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mx-auto mb-3">
@@ -1378,7 +1489,7 @@ ${userMessage}
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="full-screen-container bg-gray-50 flex flex-col">
       {/* ヘッダー - スマホ対応の見やすいデザイン */}
       <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-200">
         <div className="container mx-auto max-w-md px-4 py-4 flex justify-between items-center">
@@ -1466,7 +1577,7 @@ ${userMessage}
       </header>
 
       {/* メインコンテンツ - スマホ対応 */}
-      <div className="container mx-auto max-w-md px-4 pt-6 pb-24 flex-1 overflow-y-auto">
+      <div className="container mx-auto max-w-md mobile-safe-padding pt-6 pb-24 flex-1 scroll-container">
         {renderContent()}
       </div>
 
@@ -1999,7 +2110,7 @@ function InitialChildSetup() {
   const isFormValid = childName.trim() && childBirthdate && childGender;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 flex items-center justify-center p-4">
+    <div className="full-screen-container bg-gradient-to-b from-pink-50 to-purple-50 flex items-center justify-center mobile-safe-padding">
       <div className="w-full max-w-md">
         {/* ヘッダー */}
         <div className="text-center mb-8">
@@ -2251,7 +2362,7 @@ function DataMigrationPrompt() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50 p-4">
+    <div className="full-screen-container flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50 mobile-safe-padding">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">データ移行</h2>
@@ -2316,7 +2427,7 @@ function MainApp() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
+      <div className="full-screen-container flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
         <div className="flex flex-col items-center">
           <svg className="animate-spin h-10 w-10 mb-4 text-pink-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
