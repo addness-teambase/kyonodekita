@@ -237,14 +237,14 @@ const GrowthRecords: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50 pb-24">
-            {/* ヘッダー */}
+            {/* ヘッダー - シンプル版 */}
             <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-4">
                 <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-800">成長記録</h1>
-                        <p className="text-sm text-gray-600 mt-1">
-                            {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}の成長の記録` : 'お子さまの成長の記録'}
-                        </p>
+                    <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mr-3">
+                            <span className="text-lg">🌟</span>
+                        </div>
+                        <h1 className="text-lg font-bold text-gray-800">成長記録</h1>
                     </div>
                     <button
                         onClick={() => setShowAddModal(true)}

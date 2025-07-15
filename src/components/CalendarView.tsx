@@ -31,7 +31,7 @@ const CalendarView: React.FC = () => {
     // トグル用の状態
     const [isEventsOpen, setIsEventsOpen] = useState(true);
     const [isRecordsOpen, setIsRecordsOpen] = useState(true);
-    
+
     // カテゴリー別一覧表示用の状態
     const [activeCategory, setActiveCategory] = useState<'achievement' | 'happy' | 'failure' | 'trouble' | null>(null);
 
@@ -381,15 +381,7 @@ const CalendarView: React.FC = () => {
                     <h3 className="text-lg font-medium text-gray-800">
                         {categoryNames[activeCategory]} ({categoryRecords.length}件)
                     </h3>
-                    <button
-                        onClick={() => setActiveCategory(null)}
-                        className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
+                    {/* ×ボタンを削除 */}
                 </div>
 
                 {categoryRecords.length === 0 ? (
@@ -405,7 +397,7 @@ const CalendarView: React.FC = () => {
                     <div className="space-y-3">
                         {categoryRecords.map(record => {
                             const canDelete = isToday(selectedDate) && isToday(new Date(record.timestamp));
-                            
+
                             return (
                                 <div
                                     key={record.id}

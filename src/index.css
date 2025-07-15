@@ -129,6 +129,34 @@ span,
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* チャット専用のスクロールバー */
+.chat-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* チャットメッセージのホバー効果 */
+.chat-message {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.chat-message:hover {
+  transform: translateY(-1px);
+}
+
 /* スマホ対応のレスポンシブユーティリティ */
 @layer utilities {
 
@@ -164,6 +192,26 @@ span,
     overscroll-behavior: none;
     -webkit-overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* チャット専用のスクロールコンテナ */
+  .chat-scroll-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    /* スクロールの慣性を調整 */
+    scroll-snap-type: y proximity;
+    /* スクロールバーのカスタマイズ */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+  }
+
+  /* チャットメッセージのスクロールスナップ */
+  .chat-message {
+    scroll-snap-align: start;
   }
 
   /* スマホでの最適化されたパディング */
