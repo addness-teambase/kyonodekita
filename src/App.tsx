@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical } from 'lucide-react';
+import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { RecordProvider, useRecord, RecordCategory } from './context/RecordContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -293,14 +293,10 @@ function AppContent() {
       setChatSessions(updatedSessions);
       saveChatSessions(updatedSessions);
 
-      // 削除したセッションが現在選択中の場合、別のセッションを選択
+      // 削除したセッションが現在選択中の場合、最初の画面に戻る
       if (currentSessionId === sessionToDelete) {
-        if (updatedSessions.length > 0) {
-          setCurrentSessionId(updatedSessions[0].id);
-        } else {
-          // 全部削除された場合は現在のセッションIDをnullに
-          setCurrentSessionId(null);
-        }
+        setCurrentSessionId(null);
+        setShowChatHistory(false);
       }
     }
     setShowDeleteSessionConfirm(false);
@@ -354,6 +350,11 @@ function AppContent() {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+
+  // 先生相談機能の状態を追加
+  const [showTeacherConsultation, setShowTeacherConsultation] = useState(false);
+  const [showConsultationModal, setShowConsultationModal] = useState(false);
+  const [consultationType, setConsultationType] = useState<'ai' | 'teacher'>('ai');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1062,7 +1063,7 @@ ${userMessage}
         );
       case 'chat':
         return (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full overflow-y-auto">
             {/* 先生相談ヘッダー - シンプル版 */}
             <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
               <div className="flex items-center justify-between">
@@ -1085,17 +1086,110 @@ ${userMessage}
                   </button>
                   {getCurrentSession() && (
                     <button
-                      onClick={() => setShowDeleteSessionConfirm(true)}
-                      className="flex items-center gap-1 px-2 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium focus:outline-none"
+                      onClick={() => {
+                        setCurrentSessionId(null);
+                        setShowChatHistory(false);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium focus:outline-none"
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
-                      <Trash2 size={14} />
-                      <span>削除</span>
+                      <Plus size={14} />
+                      <span>新しいチャット</span>
                     </button>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* 気軽に相談ボタン */}
+            {!getCurrentSession() && !showChatHistory && (
+              <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mx-auto mb-3">
+                    <MessageSquare className="w-8 h-8 text-purple-600" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">気軽にチャットで相談</h3>
+                  <p className="text-gray-500 text-sm mb-4">
+                    テーマを選んでご相談を始めましょう
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() => createThematicChatSession('development')}
+                    className="w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl p-4 text-left transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">発達</span>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">発達について相談</h4>
+                        <p className="text-sm text-gray-600">言葉、運動、成長の様子など</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => createThematicChatSession('behavior')}
+                    className="w-full bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl p-4 text-left transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">行動</span>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">行動について相談</h4>
+                        <p className="text-sm text-gray-600">食事、睡眠、遊び、友達関係など</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => createThematicChatSession('concerns')}
+                    className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl p-4 text-left transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">悩み</span>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-800">育児の悩み相談</h4>
+                        <p className="text-sm text-gray-600">困っていることや不安なことなど</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* 実際の先生相談ボタン */}
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                  <button
+                    onClick={() => setShowConsultationModal(true)}
+                    className="w-full bg-gradient-to-r from-orange-50 to-pink-50 border-2 border-orange-200 rounded-xl p-4 text-left transition-all duration-200 hover:shadow-lg hover:border-orange-300"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full flex items-center justify-center">
+                        <UserCheck className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-800">実際の先生とお話ししてみる</h4>
+                        <p className="text-sm text-gray-600">専門家と直接相談できます</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">¥3,000</span>
+                          <span className="text-xs text-gray-500">30分の個別相談</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ボタン選択画面の下部パディング */}
+            {!getCurrentSession() && !showChatHistory && (
+              <div className="pb-32"></div>
+            )}
 
             {/* チャット履歴表示 */}
             {showChatHistory && (
@@ -1154,148 +1248,188 @@ ${userMessage}
             )}
 
             {/* チャットメッセージエリア - ChatGPT風 */}
-            <div className="flex-1 chat-scroll-container pb-4" ref={chatScrollContainerRef}>
-              {getCurrentSession()?.messages.map(message => (
-                <div key={message.id} className={`flex items-start space-x-3 mb-4 px-4 chat-message ${message.sender === 'user' ? 'justify-end' : ''}`}>
-                  {message.sender === 'ai' && (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-xs font-medium">先生</span>
-                    </div>
-                  )}
-
-                  <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
-                    <div className={`inline-block px-4 py-3 rounded-2xl max-w-xs lg:max-w-md ${message.sender === 'ai'
-                      ? 'bg-purple-50 border border-purple-200 rounded-tl-md text-gray-800'
-                      : 'bg-orange-500 text-white rounded-tr-md'
-                      }`}>
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                        {message.content}
+            {getCurrentSession() && (
+              <div className="flex-1 chat-scroll-container pb-4 min-h-0" ref={chatScrollContainerRef}>
+                {getCurrentSession()?.messages.map(message => (
+                  <div key={message.id} className={`flex items-start space-x-3 mb-4 px-4 chat-message ${message.sender === 'user' ? 'justify-end' : ''}`}>
+                    {message.sender === 'ai' && (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs font-medium">先生</span>
                       </div>
-                    </div>
-                    <p className={`text-xs text-gray-500 mt-2 ${message.sender === 'user' ? 'mr-4' : 'ml-4'}`}>
-                      {formatTime(new Date(message.timestamp))}
-                    </p>
-                  </div>
+                    )}
 
-                  {message.sender === 'user' && (
-                    <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
-                      <User size={16} className="text-white" />
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {!getCurrentSession() && (
-                <div className="flex items-center justify-center min-h-[300px] chat-message">
-                  <div className="text-center space-y-6">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mx-auto mb-3">
-                      <MessageSquare className="w-8 h-8 text-purple-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-800 mb-2">どのようなことでご相談ですか？</h3>
-                      <p className="text-gray-500 text-sm mb-4">
-                        テーマを選んでご相談を始めましょう
+                    <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
+                      <div className={`inline-block px-4 py-3 rounded-2xl max-w-xs lg:max-w-md ${message.sender === 'ai'
+                        ? 'bg-purple-50 border border-purple-200 rounded-tl-md text-gray-800'
+                        : 'bg-orange-500 text-white rounded-tr-md'
+                        }`}>
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {message.content}
+                        </div>
+                      </div>
+                      <p className={`text-xs text-gray-500 mt-2 ${message.sender === 'user' ? 'mr-4' : 'ml-4'}`}>
+                        {formatTime(new Date(message.timestamp))}
                       </p>
                     </div>
 
-                    <div className="space-y-3">
-                      <button
-                        onClick={() => createThematicChatSession('development')}
-                        className="w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl p-4 text-left transition-colors"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-sm font-medium">発達</span>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800">発達について相談</h4>
-                            <p className="text-sm text-gray-600">言葉、運動、成長の様子など</p>
-                          </div>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => createThematicChatSession('behavior')}
-                        className="w-full bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl p-4 text-left transition-colors"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-sm font-medium">行動</span>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800">行動について相談</h4>
-                            <p className="text-sm text-gray-600">食事、睡眠、遊び、友達関係など</p>
-                          </div>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => createThematicChatSession('concerns')}
-                        className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl p-4 text-left transition-colors"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-sm font-medium">悩み</span>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-800">育児の悩み相談</h4>
-                            <p className="text-sm text-gray-600">困っていることや不安なことなど</p>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* AI思考中の表示 */}
-              {isAiThinking && (
-                <div className="flex items-start space-x-3 mb-4 px-4 chat-message">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                    <span className="text-white text-xs font-medium">先生</span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="inline-block bg-purple-50 border border-purple-200 rounded-2xl rounded-tl-md px-4 py-3">
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    {message.sender === 'user' && (
+                      <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
+                        <User size={16} className="text-white" />
                       </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2 ml-4">考え中...</p>
+                    )}
                   </div>
-                </div>
-              )}
+                ))}
 
-              {/* 自動スクロール用の参照点 */}
-              <div ref={messagesEndRef} />
-            </div>
+                {/* AI思考中の表示 */}
+                {isAiThinking && (
+                  <div className="flex items-start space-x-3 mb-4 px-4 chat-message">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                      <span className="text-white text-xs font-medium">先生</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="inline-block bg-purple-50 border border-purple-200 rounded-2xl rounded-tl-md px-4 py-3">
+                        <div className="flex items-center space-x-1">
+                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2 ml-4">考え中...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 自動スクロール用の参照点 */}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
 
             {/* メッセージ入力エリア - ナビゲーションバーと重ならないように配置 */}
-            <div className="bg-white border-t border-gray-200 p-4 mb-20">
-              <div className="flex items-end space-x-3">
-                <div className="flex-1">
-                  <textarea
-                    value={currentMessage}
-                    onChange={(e) => setCurrentMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="今日の様子や気になることを教えてください..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm resize-none leading-relaxed"
-                    disabled={isAiThinking}
-                    rows={2}
-                  />
+            {getCurrentSession() && (
+              <div className="bg-white border-t border-gray-200 p-4 mb-20">
+                <div className="flex items-end space-x-3">
+                  <div className="flex-1">
+                    <textarea
+                      value={currentMessage}
+                      onChange={(e) => setCurrentMessage(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder="今日の様子や気になることを教えてください..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm resize-none leading-relaxed"
+                      disabled={isAiThinking}
+                      rows={2}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!currentMessage.trim() || isAiThinking}
+                    className="w-12 h-12 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                  >
+                    <Send size={18} className="text-white" />
+                  </button>
                 </div>
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!currentMessage.trim() || isAiThinking}
-                  className="w-12 h-12 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
-                >
-                  <Send size={18} className="text-white" />
-                </button>
               </div>
-            </div>
+            )}
           </div>
         );
+
+        {/* 先生相談モーダル */ }
+        {
+          showConsultationModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <UserCheck className="w-8 h-8 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-800 mb-2">
+                      実際の先生に相談
+                    </h2>
+                    <p className="text-gray-600 text-sm">
+                      専門家と直接お話しできます
+                    </p>
+                  </div>
+
+                  {/* 料金表示 */}
+                  <div className="bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-200 rounded-2xl p-4 mb-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-bold text-gray-800">相談料金</h3>
+                        <p className="text-sm text-gray-600">30分の個別相談</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-orange-600">¥3,000</div>
+                        <div className="text-xs text-gray-500">税込</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 先生の紹介 */}
+                  <div className="mb-6">
+                    <h3 className="font-bold text-gray-800 mb-3">担当先生</h3>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-medium">田中</span>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-800">田中 美咲 先生</h4>
+                          <p className="text-sm text-gray-600">保育士・子育てアドバイザー</p>
+                          <p className="text-xs text-gray-500">10年以上の子育て支援経験</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 相談内容の例 */}
+                  <div className="mb-6">
+                    <h3 className="font-bold text-gray-800 mb-3">相談内容の例</h3>
+                    <div className="space-y-2">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-600">発達の遅れが気になる</p>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-600">友達との関係で悩んでいる</p>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-600">子育ての方向性に迷っている</p>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
+                        <p className="text-sm text-gray-600">具体的なアドバイスが欲しい</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 予約ボタン */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        // ここで実際の予約処理を行う
+                        alert('予約機能は現在開発中です。\n\n予約の流れ：\n1. 希望日時を選択\n2. 相談内容を入力\n3. 決済処理\n4. 予約確定\n\n料金：¥3,000（30分）');
+                        setShowConsultationModal(false);
+                      }}
+                      className="w-full bg-gradient-to-r from-orange-500 to-pink-500 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition-all duration-200 active:scale-95"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      予約する
+                    </button>
+                    <button
+                      onClick={() => setShowConsultationModal(false)}
+                      className="w-full border border-gray-300 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
       case 'record':
         return (
           <div className="flex flex-col items-center space-y-4 pb-20 record-content">
