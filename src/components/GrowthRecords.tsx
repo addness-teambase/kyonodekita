@@ -236,9 +236,12 @@ const GrowthRecords: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50 pb-24">
-            {/* ヘッダー - シンプル版 */}
-            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-4">
+        <div className="h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50 flex flex-col">
+            {/* 固定背景 */}
+            <div className="fixed inset-0 bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50 -z-10"></div>
+
+            {/* ヘッダー - 固定 */}
+            <div className="flex-shrink-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-4 z-10">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mr-3">
@@ -256,8 +259,8 @@ const GrowthRecords: React.FC = () => {
                 </div>
             </div>
 
-            {/* コンテンツ */}
-            <div className="px-4 py-6">
+            {/* スクロール可能なコンテンツエリア */}
+            <div className="flex-1 overflow-y-auto px-4 py-6 pb-28">
                 {growthRecords.length === 0 ? (
                     <div className="text-center py-20">
                         <div className="text-6xl mb-4">🌱</div>
@@ -724,4 +727,4 @@ const GrowthRecords: React.FC = () => {
     );
 };
 
-export default GrowthRecords; 
+export default GrowthRecords;

@@ -11,7 +11,7 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
     onTabChange
 }) => {
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 flex justify-around items-center h-20 px-4 z-40 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 flex justify-around items-center h-24 px-4 z-40 shadow-lg pb-2">
             <button
                 onClick={() => onTabChange('home')}
                 className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'home'
