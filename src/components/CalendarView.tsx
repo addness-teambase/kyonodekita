@@ -167,7 +167,7 @@ const CalendarView: React.FC = () => {
                         onClick={() => setActiveCategory('failure')}
                         className="bg-amber-50 p-2 rounded-lg text-center border border-amber-100 hover:bg-amber-100 transition-colors"
                     >
-                        <span className="text-2xs text-gray-600">気になった</span>
+                        <span className="text-2xs text-gray-600">気になる</span>
                         <p className="text-base font-semibold text-amber-600">{categoryCounts.failure}</p>
                     </button>
                     <button
@@ -286,7 +286,7 @@ const CalendarView: React.FC = () => {
                                                 bgColor = 'bg-amber-50';
                                                 borderColor = 'border-amber-400';
                                                 textColor = 'text-amber-600';
-                                                categoryLabel = '気になったこと';
+                                                categoryLabel = '気になること';
                                                 break;
                                             case 'trouble':
                                                 bgColor = 'bg-rose-50';
@@ -346,7 +346,7 @@ const CalendarView: React.FC = () => {
         const categoryNames = {
             achievement: 'できたこと',
             happy: 'うれしかったこと',
-            failure: '気になったこと',
+            failure: '気になること',
             trouble: 'こまったこと'
         };
 
@@ -439,7 +439,7 @@ const CalendarView: React.FC = () => {
     };
 
     return (
-        <div className="animate-slideUp flex flex-col">
+        <div className="animate-slideUp flex flex-col min-h-0">
             {/* カレンダー本体 */}
             <div className="bg-white rounded-lg p-4 shadow-sm flex-shrink-0">
                 <div className="flex justify-between items-center mb-4">
@@ -529,7 +529,7 @@ const CalendarView: React.FC = () => {
             {renderCategoryRecords()}
 
             {/* 選択した日の詳細 */}
-            <div className="mt-4 pb-4">
+            <div className="mt-4 pb-6">
                 {renderDayDetails()}
             </div>
 

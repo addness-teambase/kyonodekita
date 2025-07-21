@@ -918,7 +918,7 @@ ${userMessage}
                         : 'bg-amber-50 border border-amber-200 hover:bg-amber-100'
                         }`}
                     >
-                      <div className="text-xs text-gray-600 mb-1">気になった</div>
+                                              <div className="text-xs text-gray-600 mb-1">気になる</div>
                       <div className="text-lg font-bold text-amber-600">
                         {todaysFilteredRecords.filter(r => r.category === 'failure').length}
                       </div>
@@ -1495,7 +1495,7 @@ ${userMessage}
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <HelpCircle size={24} className="text-amber-600" />
                   </div>
-                  <span className="text-sm font-bold text-gray-800">気になったこと</span>
+                                          <span className="text-sm font-bold text-gray-800">気になること</span>
                   <span className="text-xs text-gray-500 mt-1">心配・疑問</span>
                 </button>
 
@@ -1589,55 +1589,63 @@ ${userMessage}
         );
       case 'calendar':
         return (
-          <div className="flex flex-col items-center space-y-4 calendar-content">
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mr-3">
-                    <span className="text-lg">📅</span>
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* ヘッダー部分 - 固定 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mx-4 mt-4 mb-2 flex-shrink-0">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mr-3">
+                      <span className="text-lg">📅</span>
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-800">
+                      記録カレンダー
+                    </h2>
                   </div>
-                  <h2 className="text-lg font-bold text-gray-800">
-                    記録カレンダー
-                  </h2>
+                </div>
+
+                {/* 表示モード切り替えボタン */}
+                <div className="flex justify-center">
+                  <div className="bg-gray-100 rounded-lg p-1 flex">
+                    <button
+                      onClick={() => setCalendarViewMode('month')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'month'
+                        ? 'bg-white text-gray-800 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                    >
+                      カレンダー
+                    </button>
+                    <button
+                      onClick={() => setCalendarViewMode('week')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'week'
+                        ? 'bg-white text-gray-800 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                    >
+                      週間
+                    </button>
+                    <button
+                      onClick={() => setCalendarViewMode('monthly')}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'monthly'
+                        ? 'bg-white text-gray-800 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                    >
+                      月間
+                    </button>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              {/* 表示モード切り替えボタン */}
-              <div className="flex justify-center mb-4">
-                <div className="bg-gray-100 rounded-lg p-1 flex">
-                  <button
-                    onClick={() => setCalendarViewMode('month')}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'month'
-                      ? 'bg-white text-gray-800 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                      }`}
-                  >
-                    カレンダー
-                  </button>
-                  <button
-                    onClick={() => setCalendarViewMode('week')}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'week'
-                      ? 'bg-white text-gray-800 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                      }`}
-                  >
-                    週間
-                  </button>
-                  <button
-                    onClick={() => setCalendarViewMode('monthly')}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'monthly'
-                      ? 'bg-white text-gray-800 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                      }`}
-                  >
-                    月間
-                  </button>
-                </div>
+            {/* カレンダーコンテンツ部分 - スクロール可能 */}
+            <div className="flex-1 overflow-y-auto px-4 pb-24">
+              <div className="space-y-4">
+                {calendarViewMode === 'month' ? <CalendarView /> :
+                  calendarViewMode === 'week' ? <WeeklyView /> :
+                    <MonthlyView />}
               </div>
-
-              {calendarViewMode === 'month' ? <CalendarView /> :
-                calendarViewMode === 'week' ? <WeeklyView /> :
-                  <MonthlyView />}
             </div>
           </div>
         );

@@ -94,7 +94,7 @@ const MonthlyView: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col space-y-4 pb-20">
+        <div className="flex flex-col space-y-4">
             {/* 月間ヘッダー */}
             <div className="bg-white rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-3">

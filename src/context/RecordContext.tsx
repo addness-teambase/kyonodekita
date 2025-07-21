@@ -435,7 +435,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         const names = {
             'achievement': 'できたこと',
             'happy': 'うれしかったこと',
-            'failure': '気になったこと',
+            'failure': '気になること',
             'trouble': 'こまったこと'
         };
         return names[category];

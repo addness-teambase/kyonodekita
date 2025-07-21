@@ -67,10 +67,10 @@ const RecordSummary: React.FC<RecordSummaryProps> = ({
     };
 
     const categories: { key: RecordCategory; name: string; icon: React.ReactNode }[] = [
-        { key: 'achievement', name: 'できたこと', icon: <Award size={18} /> },
-        { key: 'happy', name: 'うれしかったこと', icon: <Smile size={18} /> },
-        { key: 'failure', name: '気になったこと', icon: <HelpCircle size={18} /> },
-        { key: 'trouble', name: 'こまったこと', icon: <AlertTriangle size={18} /> }
+        { key: 'achievement', name: 'できた', icon: <Award size={18} /> },
+        { key: 'happy', name: '嬉しい', icon: <Smile size={18} /> },
+        { key: 'failure', name: '気になる', icon: <HelpCircle size={18} /> },
+        { key: 'trouble', name: '困った', icon: <AlertTriangle size={18} /> }
     ];
 
     return (
