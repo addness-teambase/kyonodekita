@@ -1,0 +1,401 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* スマホ対応のビューポート設定 */
+:root {
+  --vh: 1vh;
+  --screen-height: 100vh;
+}
+
+/* スクロールの挙動を改善 */
+html {
+  height: 100%;
+  height: 100dvh;
+  /* 動的ビューポート高さ */
+  scroll-behavior: smooth;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
+
+body {
+  height: 100%;
+  height: 100dvh;
+  /* 動的ビューポート高さ */
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  overflow-x: hidden;
+  touch-action: pan-y;
+  /* iOS Safariでのバウンスを防ぐ */
+  -webkit-overscroll-behavior: none;
+  overscroll-behavior: none;
+}
+
+/* ルートコンテナの設定 */
+#root {
+  height: 100%;
+  height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+}
+
+/* すべてのボタンとクリック可能な要素のタップハイライトを無効化 */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  /* スマホでの余分なスクロールを防ぐ */
+  overscroll-behavior: none;
+  -webkit-overscroll-behavior: none;
+}
+
+/* テキスト入力欄だけは選択可能に */
+input,
+textarea {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* すべてのボタンとクリック可能な要素のフォーカスアウトラインを無効化 */
+button,
+[role="button"],
+[onclick],
+[tabindex] {
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+/* より強力なタップハイライト無効化 */
+button *,
+div[onclick] *,
+[role="button"] *,
+span[onclick] * {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: none !important;
+}
+
+/* ボタンのみpointer-eventsを有効化 */
+button,
+[role="button"],
+[onclick],
+[tabindex] {
+  pointer-events: auto !important;
+}
+
+/* 特定のクラスに対するさらなる対策 */
+.bg-amber-50,
+.bg-amber-100,
+.border-amber-200,
+.border-amber-300 {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* アイコンとテキストのpointer-eventsを無効化 */
+svg,
+span,
+.lucide {
+  pointer-events: none !important;
+}
+
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* チャット専用のスクロールバー */
+.chat-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.chat-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* チャットメッセージのホバー効果 */
+.chat-message {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.chat-message:hover {
+  transform: translateY(-1px);
+}
+
+/* スマホ対応のレスポンシブユーティリティ */
+@layer utilities {
+
+  /* 動的ビューポート高さ */
+  .h-screen-dynamic {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .min-h-screen-dynamic {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .max-h-screen-dynamic {
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+
+  /* フルスクリーンコンテナ */
+  .full-screen-container {
+    height: 100vh;
+    height: 100dvh;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    -webkit-overscroll-behavior: none;
+  }
+
+  /* スクロール可能なコンテナ */
+  .scroll-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    -webkit-overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* チャット専用のスクロールコンテナ */
+  .chat-scroll-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    /* スクロールの慣性を調整 */
+    scroll-snap-type: y proximity;
+    /* スクロールバーのカスタマイズ */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+  }
+
+  /* チャットメッセージのスクロールスナップ */
+  .chat-message {
+    scroll-snap-align: start;
+  }
+
+  /* スマホでの最適化されたパディング */
+  .mobile-safe-padding {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .animation-delay-100 {
+    animation-delay: 0.1s;
+  }
+
+  .animation-delay-200 {
+    animation-delay: 0.2s;
+  }
+}
+
+/* JavaScript用の動的ビューポート高さ計算 */
+@supports (height: 100dvh) {
+  .h-screen-dynamic {
+    height: 100dvh;
+  }
+
+  .min-h-screen-dynamic {
+    min-height: 100dvh;
+  }
+
+  .max-h-screen-dynamic {
+    max-height: 100dvh;
+  }
+}
+
+@keyframes float-up {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: translate3d(0, -100vh, 0) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(20px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+/* タブ切り替えアニメーション */
+.tab-enter {
+  opacity: 0;
+  transform: translate3d(0, 10px, 0);
+}
+
+.tab-enter-active {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.tab-exit {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.tab-exit-active {
+  opacity: 0;
+  transform: translate3d(0, -10px, 0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* スマホ専用のメディアクエリ */
+@media (max-width: 768px) {
+
+  /* スマホでの余分なスクロールを完全に防ぐ */
+  html,
+  body {
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* スマホでのタッチ操作を最適化 */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* 入力フィールドのタッチ操作は許可 */
+  input,
+  textarea,
+  select {
+    touch-action: auto;
+  }
+
+  /* スマホでのフォントサイズ調整を防ぐ */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+
+  /* カレンダー画面のスクロール問題を解決 */
+  .calendar-content {
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  /* 記録画面のスクロール問題を解決 */
+  .record-content {
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+    padding-bottom: 120px;
+  }
+
+  /* スクロール感を抑制 */
+  .scroll-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    -webkit-overscroll-behavior: contain;
+  }
+
+  /* タッチスクロールの感度を調整 */
+  .scroll-container {
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+}
