@@ -89,6 +89,31 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
+-- Create direct_chat_conversations table (for parent-admin communication)
+CREATE TABLE IF NOT EXISTS direct_chat_conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  child_id UUID NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+  parent_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  admin_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived', 'closed')),
+  last_message_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(child_id, parent_user_id)
+);
+
+-- Create direct_chat_messages table
+CREATE TABLE IF NOT EXISTS direct_chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  conversation_id UUID NOT NULL REFERENCES direct_chat_conversations(id) ON DELETE CASCADE,
+  sender_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_type TEXT NOT NULL CHECK (sender_type IN ('parent', 'admin')),
+  content TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  read_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
 -- Create growth_records table
 CREATE TABLE IF NOT EXISTS growth_records (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -239,3 +264,10 @@ BEGIN
     END IF;
 END $$;
 */ 
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_direct_chat_conversations_child_id ON direct_chat_conversations(child_id);
+CREATE INDEX IF NOT EXISTS idx_direct_chat_conversations_parent_user_id ON direct_chat_conversations(parent_user_id);
+CREATE INDEX IF NOT EXISTS idx_direct_chat_messages_conversation_id ON direct_chat_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_direct_chat_messages_created_at ON direct_chat_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_direct_chat_messages_is_read ON direct_chat_messages(is_read); 

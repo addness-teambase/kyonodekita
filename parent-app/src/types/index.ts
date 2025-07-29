@@ -41,3 +41,25 @@ export interface ChildInfo {
   gender?: 'male' | 'female';
   avatarImage?: string;
 }
+
+// 直接チャット用メッセージ
+export interface DirectChatMessage {
+  id: string;
+  childId: string;
+  sender: 'parent' | 'admin';
+  senderName: string;
+  message: string;
+  timestamp: string;
+  isRead?: boolean;
+}
+
+// 直接チャットセッション
+export interface DirectChatSession {
+  id: string;
+  childId: string;
+  participantType: 'admin' | 'teacher';
+  participantName: string;
+  messages: DirectChatMessage[];
+  lastMessageTime: string;
+  unreadCount: number;
+}

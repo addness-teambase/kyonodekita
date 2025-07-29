@@ -397,38 +397,84 @@ const App: React.FC = () => {
 
       case 'messages':
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">メッセージ一覧</h2>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl font-bold text-gray-800">保護者との連絡</h1>
+              <div className="flex items-center space-x-3">
+                <div className="bg-gradient-to-r from-pink-100 to-orange-100 px-4 py-2 rounded-2xl">
+                  <span className="text-sm font-medium text-pink-600">
+                    未読 {DEMO_DATA.stats.unreadMessages}件
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* メッセージ一覧 */}
             <div className="space-y-4">
-              {DEMO_DATA.children
-                .filter(child => child.unreadMessages > 0)
-                .map((child) => (
-                  <div key={child.id} className="border border-gray-200 rounded-xl p-6 hover:bg-gray-50 transition-colors">
+              {DEMO_DATA.children.map((child) => {
+                const childMessages = chatMessages.filter(msg => msg.childId === child.id);
+                const latestMessage = childMessages[childMessages.length - 1];
+                const unreadCount = childMessages.filter(msg => msg.sender === 'parent').length;
+
+                if (childMessages.length === 0) return null;
+
+                return (
+                  <div
+                    key={child.id}
+                    onClick={() => startChat(child.id)}
+                    className="bg-white rounded-2xl border border-gray-100 p-4 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
-                          <span className="text-white font-bold text-sm">{child.avatar}</span>
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-orange-500 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                          {child.avatar}
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{child.name}の保護者</h3>
-                          <p className="text-sm text-gray-600">{child.parentName}</p>
-                          <p className="text-xs text-gray-500">最新メッセージ: {formatTime(child.lastActivity)}</p>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <h3 className="font-bold text-gray-900">{child.name}</h3>
+                            <span className="text-sm text-gray-500">({child.age}歳)</span>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-1">保護者: {child.parentName}</p>
+                          {latestMessage && (
+                            <div className="flex items-center space-x-2">
+                              <span className={`w-2 h-2 rounded-full ${latestMessage.sender === 'parent' ? 'bg-blue-400' : 'bg-orange-400'
+                                }`}></span>
+                              <p className="text-sm text-gray-500 truncate max-w-xs">
+                                {latestMessage.message}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center space-x-3">
-                        <span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full">
-                          {child.unreadMessages}件
-                        </span>
-                        <button
-                          onClick={() => startChat(child.id)}
-                          className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors"
-                        >
-                          返信
-                        </button>
+                      <div className="text-right">
+                        {latestMessage && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            {formatTime(latestMessage.timestamp)}
+                          </p>
+                        )}
+                        {unreadCount > 0 && (
+                          <div className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                            {unreadCount}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                ))}
+                );
+              })}
+
+              {/* メッセージがない場合 */}
+              {chatMessages.length === 0 && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">まだメッセージがありません</h3>
+                  <p className="text-gray-500 text-sm">
+                    保護者からのメッセージがここに表示されます
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -487,8 +533,8 @@ const App: React.FC = () => {
                   key={item.id}
                   onClick={() => setCurrentView(item.id)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                      ? 'bg-gradient-to-r from-pink-50 to-orange-50 text-pink-700 border border-pink-200'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gradient-to-r from-pink-50 to-orange-50 text-pink-700 border border-pink-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -649,12 +695,10 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
             {/* チャットヘッダー */}
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">
-                    {DEMO_DATA.children.find(c => c.id === chatChild)?.avatar}
-                  </span>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-orange-500 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                  {DEMO_DATA.children.find(c => c.id === chatChild)?.avatar}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">
@@ -663,6 +707,10 @@ const App: React.FC = () => {
                   <p className="text-sm text-gray-500">
                     保護者: {DEMO_DATA.children.find(c => c.id === chatChild)?.parentName}
                   </p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                    <span className="text-xs text-gray-400">オンライン</span>
+                  </div>
                 </div>
               </div>
               <button
@@ -682,19 +730,23 @@ const App: React.FC = () => {
                     key={message.id}
                     className={`flex ${message.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div
-                      className={`max-w-xs px-4 py-3 rounded-2xl ${message.sender === 'admin'
-                          ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                        }`}
-                    >
-                      <p className="text-sm">{message.message}</p>
-                      <p
-                        className={`text-xs mt-1 ${message.sender === 'admin' ? 'text-pink-100' : 'text-gray-500'
+                    <div className="max-w-xs">
+                      <div
+                        className={`px-4 py-3 rounded-2xl ${message.sender === 'admin'
+                          ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-br-md'
+                          : 'bg-blue-50 border border-blue-200 text-gray-900 rounded-bl-md'
                           }`}
                       >
-                        {formatTime(message.timestamp)}
-                      </p>
+                        <p className="text-sm leading-relaxed">{message.message}</p>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 px-1">
+                        <p className={`text-xs ${message.sender === 'admin' ? 'text-gray-400' : 'text-blue-600'}`}>
+                          {message.senderName}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {formatTime(message.timestamp)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -707,16 +759,25 @@ const App: React.FC = () => {
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="メッセージを入力..."
+                  placeholder={`${DEMO_DATA.children.find(c => c.id === chatChild)?.parentName}さんにメッセージを送信...`}
                   className="flex-1 px-4 py-3 bg-gray-100 border-0 rounded-2xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:bg-white transition-all duration-200"
                   onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                 />
                 <button
                   onClick={sendMessage}
-                  className="p-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
+                  disabled={!newMessage.trim()}
+                  className="p-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-5 h-5" />
                 </button>
+              </div>
+
+              {/* 送信者情報 */}
+              <div className="flex items-center space-x-2 mt-3 px-1">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">管</span>
+                </div>
+                <span className="text-xs text-gray-500">管理者として送信</span>
               </div>
             </div>
           </div>

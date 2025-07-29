@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, UserCheck, Edit, Calendar, TrendingUp } from 'lucide-react';
+import { Home, MessageSquare, Edit, Calendar, TrendingUp } from 'lucide-react';
 
 interface BottomNavigationBarProps {
     activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth';
@@ -87,9 +87,9 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
                     ? 'bg-pink-100'
                     : 'hover:bg-gray-50'
                     }`}>
-                    <UserCheck size={20} />
+                    <MessageSquare size={20} />
                 </div>
-                <span className="text-xs mt-1 font-medium">相談</span>
+                <span className="text-xs mt-1 font-medium">チャット</span>
             </button>
         </div>
     );
