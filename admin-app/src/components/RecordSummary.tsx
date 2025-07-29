@@ -1,156 +1,115 @@
-import React, { useState } from 'react';
-import {
-    Award,
-    Smile,
-    HelpCircle,
-    AlertTriangle,
-    Clock,
-    Trash2
-} from 'lucide-react';
-import { RecordEvent, RecordCategory } from '../context/RecordContext';
+import React from 'react';
+import { Trash2, Clock } from 'lucide-react';
+import { useRecord } from '../context/RecordContext';
 
 interface RecordSummaryProps {
-    records: RecordEvent[];
-    onDeleteRecord: (id: string) => void;
-    getCategoryName: (category: RecordCategory) => string;
-    formatTime: (date: Date) => string;
+    childId?: string;
 }
 
-const RecordSummary: React.FC<RecordSummaryProps> = ({
-    records,
-    onDeleteRecord,
-    getCategoryName,
-    formatTime
-}) => {
-      const [activeTab, setActiveTab] = useState<RecordCategory>('achievement');
+const RecordSummary: React.FC<RecordSummaryProps> = ({ childId }) => {
+    const {
+        recordEvents,
+        deleteRecordEvent,
+        getCategoryName,
+        formatTime,
+        activeChildId
+    } = useRecord();
 
-  // カテゴリー別の記録をフィルタリング
-  const filteredRecords = records.filter(record => record.category === activeTab);
+    // 対象の園児IDを決定
+    const targetChildId = childId || activeChildId;
 
-    // カテゴリーアイコンと色の取得
-    const getCategoryIconAndColor = (category: RecordCategory) => {
-        const config = {
-            achievement: {
-                icon: <Award size={16} />,
-                bgColor: 'bg-green-50',
-                borderColor: 'border-green-200',
-                textColor: 'text-green-700',
-                iconBg: 'bg-green-100',
-                iconColor: 'text-green-600'
-            },
-            happy: {
-                icon: <Smile size={16} />,
-                bgColor: 'bg-blue-50',
-                borderColor: 'border-blue-200',
-                textColor: 'text-blue-700',
-                iconBg: 'bg-blue-100',
-                iconColor: 'text-blue-600'
-            },
-            failure: {
-                icon: <HelpCircle size={16} />,
-                bgColor: 'bg-amber-50',
-                borderColor: 'border-amber-200',
-                textColor: 'text-amber-700',
-                iconBg: 'bg-amber-100',
-                iconColor: 'text-amber-600'
-            },
-            trouble: {
-                icon: <AlertTriangle size={16} />,
-                bgColor: 'bg-red-50',
-                borderColor: 'border-red-200',
-                textColor: 'text-red-700',
-                iconBg: 'bg-red-100',
-                iconColor: 'text-red-600'
-            }
+    // 今日の記録を取得
+    const todayEvents = React.useMemo(() => {
+        if (!targetChildId) return [];
+
+        const today = new Date().toDateString();
+        return recordEvents.filter(record =>
+            record.childId === targetChildId &&
+            new Date(record.timestamp).toDateString() === today
+        ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [recordEvents, targetChildId]);
+
+    // カテゴリー別のスタイルを取得
+    const getCategoryStyle = (category: string) => {
+        const styles = {
+            achievement: 'bg-green-50 text-green-800 border-green-200',
+            happy: 'bg-blue-50 text-blue-800 border-blue-200',
+            failure: 'bg-amber-50 text-amber-800 border-amber-200',
+            trouble: 'bg-red-50 text-red-800 border-red-200'
         };
-        return config[category];
+        return styles[category as keyof typeof styles] || 'bg-gray-50 text-gray-800 border-gray-200';
     };
 
-    const categories: { key: RecordCategory; name: string; icon: React.ReactNode }[] = [
-        { key: 'achievement', name: 'できた', icon: <Award size={18} /> },
-        { key: 'happy', name: '嬉しい', icon: <Smile size={18} /> },
-        { key: 'failure', name: '気になる', icon: <HelpCircle size={18} /> },
-        { key: 'trouble', name: '困った', icon: <AlertTriangle size={18} /> }
-    ];
+    if (!targetChildId) {
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                <p className="text-gray-500">園児が選択されていません</p>
+            </div>
+        );
+    }
+
+    if (todayEvents.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Clock className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">今日の記録はまだありません</h3>
+                <p className="text-gray-500">園児の活動記録が追加されるとここに表示されます</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* ヘッダー */}
-            <div className="p-5 border-b border-gray-100">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">
-                    今日の記録一覧
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+            <div className="p-6 border-b border-gray-100">
+                <h3 className="text-lg font-bold text-gray-900">
+                    今日の記録 ({todayEvents.length}件)
                 </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                    {new Date().toLocaleDateString('ja-JP', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    })}
+                </p>
             </div>
 
-            {/* タブナビゲーション */}
-            <div className="flex border-b border-gray-100">
-                {categories.map(category => {
-                    const count = records.filter(r => r.category === category.key).length;
-                    return (
-                        <button
-                            key={category.key}
-                            onClick={() => setActiveTab(category.key)}
-                            className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                                activeTab === category.key
-                                    ? 'text-orange-600 border-b-2 border-orange-500 bg-orange-50'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                            }`}
+            <div className="p-6">
+                <div className="space-y-4">
+                    {todayEvents.map((record) => (
+                        <div
+                            key={record.id}
+                            className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors"
                         >
-                            {category.name} ({count})
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* 記録一覧 */}
-            <div className="max-h-96 overflow-y-auto">
-                {filteredRecords.length === 0 ? (
-                    <div className="p-8 text-center">
-                        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                            <span className="text-2xl">📝</span>
-                        </div>
-                        <p className="text-gray-500 text-sm">
-                            このカテゴリーの記録がありません
-                        </p>
-                    </div>
-                ) : (
-                    <div className="p-4 space-y-3">
-                        {filteredRecords.map(record => {
-                            const config = getCategoryIconAndColor(record.category);
-                            return (
-                                <div
-                                    key={record.id}
-                                    className={`p-4 rounded-xl ${config.bgColor} border-l-4 ${config.borderColor}`}
-                                >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-8 h-8 rounded-full ${config.iconBg} flex items-center justify-center`}>
-                                                <span className={config.iconColor}>{config.icon}</span>
-                                            </div>
-                                            <div>
-                                                <span className={`text-sm font-semibold ${config.textColor}`}>
-                                                    {getCategoryName(record.category)}
-                                                </span>
-                                                <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                                                    <Clock size={12} />
-                                                    {formatTime(new Date(record.timestamp))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => onDeleteRecord(record.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                            title="削除"
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center space-x-3 mb-2">
+                                        <span
+                                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getCategoryStyle(record.category)}`}
                                         >
-                                            <Trash2 size={14} />
-                                        </button>
+                                            {getCategoryName(record.category)}
+                                        </span>
+                                        <div className="flex items-center text-sm text-gray-500">
+                                            <Clock className="w-3 h-3 mr-1" />
+                                            {formatTime(record.timestamp)}
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
+                                    <p className="text-sm text-gray-700 leading-relaxed">
+                                        {record.note}
+                                    </p>
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                <button
+                                    onClick={() => deleteRecordEvent(record.id)}
+                                    className="ml-3 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                    title="削除"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

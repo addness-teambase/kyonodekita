@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Lock, LogIn, AlertCircle, Heart, UserPlus } from 'lucide-react';
+import { Building, User, Lock, Eye, EyeOff } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
-    const [username, setUsername] = useState('');
+    const [facilityName, setFacilityName] = useState('');
+    const [adminName, setAdminName] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [mode, setMode] = useState<'login' | 'signup'>('login');
     const [success, setSuccess] = useState('');
@@ -15,13 +17,18 @@ const LoginPage: React.FC = () => {
         setError('');
         setSuccess('');
 
-        if (!username.trim() || !password.trim()) {
-            setError('ユーザー名とパスワードを入力してください');
+        if (!facilityName.trim() || !adminName.trim() || !password.trim()) {
+            setError('全ての項目を入力してください');
             return;
         }
 
-        if (username.length < 2) {
-            setError('ユーザー名は2文字以上で入力してください');
+        if (facilityName.length < 2) {
+            setError('事業所名は2文字以上で入力してください');
+            return;
+        }
+
+        if (adminName.length < 2) {
+            setError('管理者名は2文字以上で入力してください');
             return;
         }
 
@@ -32,173 +39,189 @@ const LoginPage: React.FC = () => {
 
         try {
             if (mode === 'login') {
-                console.log('ログイン試行:', { username, password: '***' });
-                const result = await login(username, password);
+                console.log('ログイン試行:', { facilityName, adminName, password: '***' });
+
+                // ローカルストレージの確認
+                const facilities = localStorage.getItem('kyou-no-dekita-facilities');
+                console.log('ローカルストレージの事業所データ:', facilities);
+
+                const result = await login(facilityName, adminName, password);
                 console.log('ログイン結果:', result);
                 if (!result.success) {
                     setError(result.error || 'ログインに失敗しました');
                 }
             } else {
-                console.log('サインアップ試行:', { username, password: '***' });
-                const result = await signUp(username, password);
-                console.log('サインアップ結果:', result);
+                console.log('事業所登録試行:', { facilityName, adminName, password: '***' });
+                const result = await signUp(facilityName, adminName, password);
+                console.log('事業所登録結果:', result);
                 if (result.success) {
-                    setSuccess('アカウントを作成しました！ログインしています...');
-                    // SignUpは成功時に自動的にログイン状態になるため、AuthContextがメインアプリに遷移させる
+                    setSuccess('事業所を登録しました！ログインしています...');
                 } else {
-                    setError(result.error || 'アカウント作成に失敗しました');
+                    setError(result.error || '事業所登録に失敗しました');
                 }
             }
         } catch (error) {
             console.error('認証エラー:', error);
-            setError('予期しないエラーが発生しました');
+            setError('システムエラーが発生しました: ' + (error as Error).message);
         }
     };
 
-    const toggleMode = () => {
-        setMode(mode === 'login' ? 'signup' : 'login');
-        setError('');
-        setSuccess('');
-        setUsername('');
-        setPassword('');
-    };
-
     return (
-        <div className="full-screen-container bg-gray-50 flex items-center justify-center mobile-safe-padding">
-            <div className="max-w-md w-full">
-                {/* アプリタイトル部分 */}
+        <div className="min-h-screen bg-gradient-to-br from-pink-50 via-orange-50 to-rose-50 flex items-center justify-center px-4">
+            {/* Background decoration */}
+            <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-pink-200/30 to-orange-200/30 rounded-full blur-3xl"></div>
+                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-orange-200/30 to-pink-200/30 rounded-full blur-3xl"></div>
+            </div>
+
+            <div className="relative w-full max-w-md">
+                {/* Logo and Title */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-500 rounded-full mb-4 shadow-lg">
-                        <Heart className="w-10 h-10 text-white" />
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-pink-500 to-orange-500 rounded-2xl mb-4 shadow-lg">
+                        <Building className="w-8 h-8 text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                        きょうのできた
-                    </h1>
-                    <p className="text-gray-600 text-sm">
-                        良かったことと不安に思ったことを簡単に記録
-                    </p>
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">今日のできた</h1>
+                    <p className="text-gray-600 text-sm">管理者画面</p>
                 </div>
 
-                {/* ログインフォーム */}
-                <div className="bg-white rounded-2xl p-6 shadow-md">
-                    <div className="text-center mb-6">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                            {mode === 'login' ? 'ログイン' : 'アカウント作成'}
-                        </h2>
-                        <p className="text-sm text-gray-600">
-                            {mode === 'login'
-                                ? 'ユーザー名とパスワードでログイン'
-                                : '新しいユーザー名とパスワードを設定'
-                            }
-                        </p>
+                {/* Main Card */}
+                <div className="bg-white/80 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl p-8">
+                    <div className="mb-6">
+                        <div className="flex bg-gray-100/80 rounded-2xl p-1 mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setMode('login')}
+                                className={`flex-1 py-3 px-4 text-sm font-medium rounded-xl transition-all duration-200 ${mode === 'login'
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                            >
+                                ログイン
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMode('signup')}
+                                className={`flex-1 py-3 px-4 text-sm font-medium rounded-xl transition-all duration-200 ${mode === 'signup'
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                            >
+                                新規登録
+                            </button>
+                        </div>
                     </div>
 
-                    {error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg" role="alert">
-                            <div className="flex items-center">
-                                <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                                <span className="text-sm text-red-700">{error}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {success && (
-                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg" role="alert">
-                            <div className="flex items-center">
-                                <Heart className="h-5 w-5 text-green-500 mr-2" />
-                                <span className="text-sm text-green-700">{success}</span>
-                            </div>
-                        </div>
-                    )}
-
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                                ユーザー名 <span className="text-red-500">*</span>
+                        {/* Facility Name Input */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                                事業所名
                             </label>
                             <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <Building className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={facilityName}
+                                    onChange={(e) => setFacilityName(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-4 bg-gray-50/80 border-0 rounded-2xl text-gray-900 placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-pink-500/20 focus:outline-none transition-all duration-200"
+                                    placeholder="保育園やまもと"
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Admin Name Input */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                                管理者名
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                     <User className="h-5 w-5 text-gray-400" />
                                 </div>
                                 <input
-                                    id="username"
                                     type="text"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="ユーザー名を入力"
-                                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
-                                    autoComplete="username"
+                                    value={adminName}
+                                    onChange={(e) => setAdminName(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-4 bg-gray-50/80 border-0 rounded-2xl text-gray-900 placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-pink-500/20 focus:outline-none transition-all duration-200"
+                                    placeholder="山本太郎"
+                                    disabled={isLoading}
                                 />
                             </div>
-                            <p className="mt-1 text-xs text-gray-500">2文字以上で入力してください</p>
                         </div>
 
-                        <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                                パスワード <span className="text-red-500">*</span>
+                        {/* Password Input */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                                パスワード
                             </label>
                             <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                     <Lock className="h-5 w-5 text-gray-400" />
                                 </div>
                                 <input
-                                    id="password"
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="パスワードを入力"
-                                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
-                                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                    className="w-full pl-12 pr-12 py-4 bg-gray-50/80 border-0 rounded-2xl text-gray-900 placeholder-gray-500 focus:bg-white focus:ring-2 focus:ring-pink-500/20 focus:outline-none transition-all duration-200"
+                                    placeholder="••••••••"
+                                    disabled={isLoading}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute inset-y-0 right-0 pr-4 flex items-center"
+                                >
+                                    {showPassword ? (
+                                        <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                                    ) : (
+                                        <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                                    )}
+                                </button>
                             </div>
-                            <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
                         </div>
 
-                        <div className="pt-2">
-                            <button
-                                type="submit"
-                                disabled={isLoading}
-                                className={`w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                                {isLoading ? (
-                                    <div className="flex items-center">
-                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        処理中...
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center">
-                                        {mode === 'login' ? (
-                                            <>
-                                                <LogIn className="h-5 w-5 mr-2" />
-                                                ログイン
-                                            </>
-                                        ) : (
-                                            <>
-                                                <UserPlus className="h-5 w-5 mr-2" />
-                                                アカウント作成
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-                            </button>
-                        </div>
+                        {/* Error Message */}
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                                <p className="text-sm text-red-700">{error}</p>
+                            </div>
+                        )}
 
-                        <div className="text-center pt-4 border-t border-gray-200">
-                            <button
-                                type="button"
-                                onClick={toggleMode}
-                                className="text-sm text-orange-600 hover:text-orange-500 transition-colors font-medium"
-                            >
-                                {mode === 'login'
-                                    ? '初回利用の方はこちら'
-                                    : '既存ユーザーの方はこちら'
-                                }
-                            </button>
-                        </div>
+                        {/* Success Message */}
+                        {success && (
+                            <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+                                <p className="text-sm text-green-700">{success}</p>
+                            </div>
+                        )}
+
+                        {/* Submit Button */}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-gradient-to-r from-pink-500 to-orange-500 text-white py-4 px-6 rounded-2xl font-medium transition-all duration-200 hover:from-pink-600 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-pink-500/20 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                        >
+                            {isLoading ? (
+                                <div className="flex items-center justify-center">
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                                    処理中...
+                                </div>
+                            ) : mode === 'login' ? (
+                                'ログイン'
+                            ) : (
+                                '事業所を登録'
+                            )}
+                        </button>
                     </form>
+
+                    {/* Footer */}
+                    <div className="mt-6 text-center">
+                        <p className="text-xs text-gray-500">
+                            安全なローカルストレージを使用しています
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

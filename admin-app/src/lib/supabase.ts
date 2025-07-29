@@ -3,23 +3,27 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseKey) {
-    console.error('Supabase configuration error:', {
-        hasUrl: !!supabaseUrl,
-        hasKey: !!supabaseKey,
-        url: supabaseUrl ? 'set' : 'missing',
-        key: supabaseKey ? 'set' : 'missing'
-    })
+// ローカルストレージ版では、Supabaseが設定されていなくても動作させる
+let supabase: any = null;
 
-    // 本番環境での一時的なフォールバック
-    if (typeof window !== 'undefined') {
-        window.location.href = '/error.html'
-    }
+if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('Supabase接続が設定されました');
+} else {
+    console.warn('Supabase環境変数が設定されていません。ローカルストレージモードで動作します。');
 
-    throw new Error('Supabase URL and Key are required. Please check your environment variables.')
+    // ダミーのSupabaseクライアントを作成（使用されないが、インポートエラーを防ぐため）
+    supabase = {
+        from: () => ({
+            select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }) }) }),
+            insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }) }) }),
+            update: () => ({ eq: () => Promise.resolve({ error: new Error('Supabase not configured') }) }),
+            delete: () => ({ eq: () => Promise.resolve({ error: new Error('Supabase not configured') }) })
+        })
+    };
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export { supabase };
 
 // 型定義
 export interface Database {

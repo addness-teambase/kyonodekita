@@ -1,2635 +1,729 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
-import { RecordProvider, useRecord, RecordCategory } from './context/RecordContext';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import RecordButton from './components/RecordButton';
-import GrowthRecords from './components/GrowthRecords';
-import { compressImage } from './utils/imageUtils';
-
+import React, { useState, useEffect } from 'react';
+import {
+  Users,
+  MessageSquare,
+  Calendar,
+  Settings,
+  Bell,
+  Search,
+  Home,
+  LogOut,
+  Building,
+  User,
+  Send,
+  X,
+  ChevronRight,
+  Plus,
+  MoreVertical,
+  Edit,
+  Eye,
+  UserPlus
+} from 'lucide-react';
+import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
-import LogoutConfirmDialog from './components/LogoutConfirmDialog';
-import BottomNavigationBar from './components/BottomNavigationBar';
 import CalendarView from './components/CalendarView';
-import WeeklyView from './components/WeeklyView';
-import MonthlyView from './components/MonthlyView';
-import RecordSummary from './components/RecordSummary';
-import { Dialog } from '@headlessui/react';
 
-// 生年月日から年齢を計算する関数
-const calculateAge = (birthdate: string): number => {
-  if (!birthdate) return 0;
-
-  const today = new Date();
-  const birthdateObj = new Date(birthdate);
-
-  let age = today.getFullYear() - birthdateObj.getFullYear();
-
-  // 誕生日がまだ来ていない場合は1引く
-  const monthDiff = today.getMonth() - birthdateObj.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthdateObj.getDate())) {
-    age--;
-  }
-
-  return age;
+// デモデータ（parent-appベース）
+const DEMO_DATA = {
+  stats: {
+    totalChildren: 24,
+    activeToday: 18,
+    totalRecords: 1456,
+    unreadMessages: 7
+  },
+  children: [
+    {
+      id: 'child1',
+      name: '山田花子',
+      age: 5,
+      parentName: '山田一郎',
+      parentEmail: 'yamada@example.com',
+      lastActivity: '2024-01-15T14:30:00Z',
+      unreadMessages: 2,
+      todayRecords: 3,
+      status: 'active',
+      avatar: 'YH',
+      birthdate: '2019-03-15',
+      gender: 'female' as const
+    },
+    {
+      id: 'child2',
+      name: '佐藤太郎',
+      age: 4,
+      parentName: '佐藤美香',
+      parentEmail: 'sato@example.com',
+      lastActivity: '2024-01-15T11:15:00Z',
+      unreadMessages: 0,
+      todayRecords: 2,
+      status: 'active',
+      avatar: 'ST',
+      birthdate: '2020-07-22',
+      gender: 'male' as const
+    },
+    {
+      id: 'child3',
+      name: '鈴木みお',
+      age: 3,
+      parentName: '鈴木健二',
+      parentEmail: 'suzuki@example.com',
+      lastActivity: '2024-01-15T09:45:00Z',
+      unreadMessages: 1,
+      todayRecords: 4,
+      status: 'active',
+      avatar: 'SM',
+      birthdate: '2021-01-10',
+      gender: 'female' as const
+    },
+    {
+      id: 'child4',
+      name: '田中けんた',
+      age: 6,
+      parentName: '田中智子',
+      parentEmail: 'tanaka@example.com',
+      lastActivity: '2024-01-15T16:20:00Z',
+      unreadMessages: 0,
+      todayRecords: 1,
+      status: 'active',
+      avatar: 'TK',
+      birthdate: '2018-11-03',
+      gender: 'male' as const
+    }
+  ],
+  chatMessages: [
+    {
+      id: 'msg1',
+      childId: 'child1',
+      sender: 'parent',
+      senderName: '山田一郎',
+      message: 'いつもお世話になっております。花子のお昼寝の件でご相談があります。',
+      timestamp: '2024-01-15T14:25:00Z'
+    },
+    {
+      id: 'msg2',
+      childId: 'child1',
+      sender: 'admin',
+      senderName: '管理者',
+      message: 'お疲れさまです。お昼寝の件、承知いたしました！どのようなご相談でしょうか？',
+      timestamp: '2024-01-15T14:30:00Z'
+    },
+    {
+      id: 'msg3',
+      childId: 'child3',
+      sender: 'parent',
+      senderName: '鈴木健二',
+      message: 'みおの様子はいかがでしょうか？',
+      timestamp: '2024-01-15T13:15:00Z'
+    }
+  ]
 };
 
-// 性別に応じて適切な敬称を返す関数
-const getChildSuffix = (gender?: 'male' | 'female'): string => {
-  return gender === 'male' ? 'くん' : 'ちゃん';
-};
-
-// 記録データの型定義はRecordContextから使用
-
-// チャットメッセージの型定義
-interface ChatMessage {
-  id: string;
-  content: string;
-  sender: 'user' | 'ai';
-  timestamp: string;
-  childId: string;
-}
-
-// チャットセッションの型定義
-interface ChatSession {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  childId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// エラーバウンダリーコンポーネント
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: any) {
-    console.error('アプリケーションエラー:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="full-screen-container bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center mobile-safe-padding">
-          <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
-            <div className="mb-4">
-              <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
-              <h2 className="text-xl font-bold text-gray-800 mb-2">アプリケーションエラー</h2>
-              <p className="text-gray-600 mb-4">
-                アプリケーションでエラーが発生しました。
-              </p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                再読み込み
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-function AppContent() {
-  const {
-    activeCategory,
-    setActiveCategory,
-    addRecordEvent,
-    updateRecordEvent,
-    getCategoryName,
-    childInfo,
-    children,
-    activeChildId,
-    setActiveChildId,
-    addChild,
-    updateChildInfo,
-    removeChild,
-    deleteRecordEvent,
-    todayEvents
-  } = useRecord();
-  const { user, logout, updateUser } = useAuth();
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth'>('home');
-  const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'monthly'>('month');
-  const [isChildSettingsOpen, setIsChildSettingsOpen] = useState(false);
-  const [childName, setChildName] = useState('');
-  const [childAge, setChildAge] = useState('');
-  const [childBirthdate, setChildBirthdate] = useState('');
-  const [childGender, setChildGender] = useState<'male' | 'female' | ''>('');
-  const [childAvatarImage, setChildAvatarImage] = useState<string>('');
-  const [editChildId, setEditChildId] = useState<string | null>(null);
-  const [showChildSelector, setShowChildSelector] = useState(false);
-  const [isParentSettingsOpen, setIsParentSettingsOpen] = useState(false);
-  const [parentName, setParentName] = useState(user?.username || '');
-
-
-
-  // 編集する子供が変わったときにフォームを更新
-  useEffect(() => {
-    console.log('👶 子供編集フォーム更新:', { editChildId, childrenCount: children.length });
-    if (editChildId) {
-      const childToEdit = children.find(child => child.id === editChildId);
-      console.log('👶 編集対象の子供:', childToEdit);
-      if (childToEdit) {
-        setChildName(childToEdit.name);
-        setChildBirthdate(childToEdit.birthdate || '');
-        setChildGender(childToEdit.gender || '');
-        setChildAvatarImage(childToEdit.avatarImage || '');
-        console.log('👶 フォームに設定された情報:', {
-          name: childToEdit.name,
-          birthdate: childToEdit.birthdate,
-          gender: childToEdit.gender,
-          hasAvatar: !!childToEdit.avatarImage
-        });
-      }
-    } else {
-      // 新規追加の場合はフォームをクリア
-      setChildName('');
-      setChildBirthdate('');
-      setChildGender('');
-      setChildAvatarImage('');
-      console.log('👶 フォームをクリア');
-    }
-  }, [editChildId, children]);
-
-  // アクティブな子供が変更されたときにチャット履歴を読み込む
-  useEffect(() => {
-    if (user && activeChildId) {
-      loadChatSessions();
-    }
-  }, [user, activeChildId]);
-
-  // チャットセッション履歴をローカルストレージから読み込む
-  const loadChatSessions = () => {
-    if (!user || !activeChildId) return;
-
-    try {
-      const savedSessions = localStorage.getItem(`chatSessions_${user.id}_${activeChildId}`);
-      if (savedSessions) {
-        const sessions = JSON.parse(savedSessions);
-        setChatSessions(sessions);
-        // 最新のセッションを選択
-        if (sessions.length > 0) {
-          setCurrentSessionId(sessions[0].id);
-        } else {
-          setCurrentSessionId(null);
-        }
-      } else {
-        // 初回の場合は空の状態にする
-        setChatSessions([]);
-        setCurrentSessionId(null);
-      }
-    } catch (error) {
-      console.error('チャットセッション履歴の読み込みエラー:', error);
-    }
-  };
-
-  // チャットセッション履歴をローカルストレージに保存
-  const saveChatSessions = (sessions: ChatSession[]) => {
-    if (!user || !activeChildId) return;
-
-    try {
-      localStorage.setItem(`chatSessions_${user.id}_${activeChildId}`, JSON.stringify(sessions));
-    } catch (error) {
-      console.error('チャットセッション履歴の保存エラー:', error);
-    }
-  };
-
-  // 新しいチャットセッションを作成（テーマ選択画面に戻る）
-  const createNewChatSession = () => {
-    if (!user || !activeChildId) return;
-
-    // セッションIDをnullに設定してテーマボタンを表示
-    setCurrentSessionId(null);
-  };
-
-  // テーマ別チャットセッションを作成
-  const createThematicChatSession = (theme: 'development' | 'behavior' | 'concerns') => {
-    if (!user || !activeChildId) return;
-
-    const childName = childInfo?.name || 'お子さま';
-    const suffix = getChildSuffix(childInfo?.gender);
-    const age = childInfo?.age || '';
-
-    const themeMessages = {
-      development: {
-        title: '発達について相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${age}歳の${childName}${suffix}の発達について、最近気になることはありますか？\n\n言葉、運動、コミュニケーション、どんなことでも構いません。具体的な様子を教えてください。`
-      },
-      behavior: {
-        title: '行動について相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${childName}${suffix}の行動について、最近気になることはありますか？\n\n食事、睡眠、遊び、お友達との関わりなど、どんなことでも構いません。詳しく教えてください。`
-      },
-      concerns: {
-        title: '育児の悩み相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${childName}${suffix}との日々の生活で困っていることや、不安に思うことがあれば、遠慮なくお聞かせください。\n\n一緒に解決策を考えましょう。`
-      }
-    };
-
-    const selectedTheme = themeMessages[theme];
-    const welcomeMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content: selectedTheme.content,
-      sender: 'ai',
-      timestamp: new Date().toISOString(),
-      childId: activeChildId
-    };
-
-    const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: selectedTheme.title,
-      messages: [welcomeMessage],
-      childId: activeChildId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    const updatedSessions = [newSession, ...chatSessions];
-    setChatSessions(updatedSessions);
-    setCurrentSessionId(newSession.id);
-    saveChatSessions(updatedSessions);
-  };
-
-  // 現在のセッションを取得
-  const getCurrentSession = (): ChatSession | null => {
-    return chatSessions.find(session => session.id === currentSessionId) || null;
-  };
-
-  // セッションのタイトルを自動生成
-  const generateSessionTitle = (firstUserMessage: string): string => {
-    const maxLength = 20;
-    if (firstUserMessage.length <= maxLength) {
-      return firstUserMessage;
-    }
-    return firstUserMessage.substring(0, maxLength) + '...';
-  };
-
-  // チャットセッションを削除
-  const deleteSession = (sessionId: string) => {
-    setSessionToDelete(sessionId);
-    setShowDeleteSessionConfirm(true);
-  };
-
-  // セッション削除を確認
-  const handleDeleteSessionConfirm = () => {
-    if (sessionToDelete) {
-      const updatedSessions = chatSessions.filter(session => session.id !== sessionToDelete);
-      setChatSessions(updatedSessions);
-      saveChatSessions(updatedSessions);
-
-      // 削除したセッションが現在選択中の場合、最初の画面に戻る
-      if (currentSessionId === sessionToDelete) {
-        setCurrentSessionId(null);
-        setShowChatHistory(false);
-      }
-    }
-    setShowDeleteSessionConfirm(false);
-    setSessionToDelete(null);
-  };
-
-  // セッション削除をキャンセル
-  const handleDeleteSessionCancel = () => {
-    setShowDeleteSessionConfirm(false);
-    setSessionToDelete(null);
-  };
-
-  // 記録データのステートは削除（RecordContextのtodayEventsを使用）
-
-  // メニューを閉じるためのクリックアウトサイドイベント
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      // メニューまたはメニューボタンをクリックした場合は閉じない
-      if (target.closest('.user-menu') || target.closest('.user-menu-button')) {
-        return;
-      }
-      if (showUserMenu) {
-        setShowUserMenu(false);
-      }
-    };
-
-    if (showUserMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showUserMenu]);
-
-  // 記録モーダルの状態を追加
-  const [showRecordModal, setShowRecordModal] = useState(false);
-  const [recordNote, setRecordNote] = useState('');
-  const [recordError, setRecordError] = useState('');
-
-  // 削除確認ダイアログの状態を追加
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
-
-  // ホーム画面のカテゴリー別一覧表示用の状態
-  const [homeActiveCategory, setHomeActiveCategory] = useState<RecordCategory | null>(null);
-
-  // チャット機能の状態を追加
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [currentMessage, setCurrentMessage] = useState('');
-  const [isAiThinking, setIsAiThinking] = useState(false);
-  const [showChatHistory, setShowChatHistory] = useState(false);
-  const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
-  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
-
-  // 先生相談機能の状態を追加
-  const [showTeacherConsultation, setShowTeacherConsultation] = useState(false);
-  const [showConsultationModal, setShowConsultationModal] = useState(false);
-  const [consultationType, setConsultationType] = useState<'ai' | 'teacher'>('ai');
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // チャットの自動スクロール関数
-  const scrollToBottom = () => {
-    if (chatScrollContainerRef.current) {
-      chatScrollContainerRef.current.scrollTo({
-        top: chatScrollContainerRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
-    }
-  };
-
-  // メッセージが更新されたときに自動スクロール
-  useEffect(() => {
-    const currentSession = getCurrentSession();
-    if (currentSession && currentSession.messages.length > 0) {
-      // 少し遅延を入れてスクロールを実行
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
-    }
-  }, [chatSessions, currentSessionId]);
-
-  // チャットタブを開いた時点で、セッションがない場合はテーマボタンを表示する状態にする
-  useEffect(() => {
-    if (activeTab === 'chat' && user && activeChildId) {
-      // 現在のセッションがない場合は、currentSessionIdをnullに設定してテーマボタンを表示
-      if (!currentSessionId && chatSessions.length === 0) {
-        setCurrentSessionId(null);
-      }
-    }
-  }, [activeTab, user, activeChildId, currentSessionId, chatSessions.length]);
-
-  // カテゴリー選択と同時に記録モーダルを開く関数
-  const handleCategorySelect = (category: RecordCategory) => {
-    setActiveCategory(category);
-    setShowRecordModal(true);
-    setRecordNote('');
-    setRecordError('');
-  };
-
-  // 記録を実行する関数
-  const handleRecordSubmit = () => {
-    if (!recordNote.trim()) {
-      setRecordError('内容を入力してください');
-      return;
-    }
-
-    // アニメーション実行（RecordContextで管理）
-    addRecordEvent(activeCategory, recordNote);
-
-    // モーダルを閉じる
-    setShowRecordModal(false);
-    setRecordNote('');
-    setRecordError('');
-  };
-
-  // 削除確認を開く関数
-  const handleDeleteClick = (recordId: string) => {
-    setRecordToDelete(recordId);
-    setShowDeleteConfirm(true);
-  };
-
-  // 削除を実行する関数
-  const handleDeleteConfirm = () => {
-    if (recordToDelete) {
-      deleteRecordEvent(recordToDelete);
-      setShowDeleteConfirm(false);
-      setRecordToDelete(null);
-    }
-  };
-
-  // 削除をキャンセルする関数
-  const handleDeleteCancel = () => {
-    setShowDeleteConfirm(false);
-    setRecordToDelete(null);
-  };
-
-
-
-  // メッセージ送信機能
-  const handleSendMessage = async () => {
-    if (!currentMessage.trim() || !activeChildId || !user) return;
-
-    let currentSession = getCurrentSession();
-    if (!currentSession) {
-      // セッションが存在しない場合は、メッセージだけの新しいセッションを作成（ウェルカムメッセージなし）
-      currentSession = {
-        id: Date.now().toString(),
-        title: '新しい相談',
-        messages: [], // 空の配列で開始
-        childId: activeChildId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      setCurrentSessionId(currentSession.id);
-    }
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content: currentMessage.trim(),
-      sender: 'user',
-      timestamp: new Date().toISOString(),
-      childId: activeChildId
-    };
-
-    const updatedMessages = [...currentSession.messages, userMessage];
-
-    // セッションのタイトルを更新（初回のユーザーメッセージの場合）
-    let updatedTitle = currentSession.title;
-    if (currentSession.messages.length === 1 && currentSession.messages[0].sender === 'ai') {
-      updatedTitle = generateSessionTitle(userMessage.content);
-    } else if (currentSession.messages.length === 0) {
-      // 空のセッションの場合（通常のメッセージ送信での初回）
-      updatedTitle = generateSessionTitle(userMessage.content);
-    }
-
-    const updatedSession: ChatSession = {
-      ...currentSession,
-      title: updatedTitle,
-      messages: updatedMessages,
-      updatedAt: new Date().toISOString()
-    };
-
-    let updatedSessions;
-    if (chatSessions.some(session => session.id === currentSession.id)) {
-      // 既存のセッションを更新
-      updatedSessions = chatSessions.map(session =>
-        session.id === currentSession.id ? updatedSession : session
-      );
-    } else {
-      // 新しいセッションを追加
-      updatedSessions = [updatedSession, ...chatSessions];
-    }
-
-    setChatSessions(updatedSessions);
-    saveChatSessions(updatedSessions);
-    setCurrentMessage('');
-    setIsAiThinking(true);
-
-    // AI応答を生成（実際のGemini API使用）
-    (async () => {
-      try {
-        const aiResponseText = await generateAiResponse(userMessage.content, updatedSession.messages);
-
-        const aiResponse: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          content: aiResponseText,
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-          childId: activeChildId
-        };
-
-        const finalMessages = [...updatedMessages, aiResponse];
-        const finalSession: ChatSession = {
-          ...updatedSession,
-          messages: finalMessages,
-          updatedAt: new Date().toISOString()
-        };
-
-        let finalSessions;
-        if (chatSessions.some(session => session.id === currentSession.id)) {
-          // 既存のセッションを更新
-          finalSessions = chatSessions.map(session =>
-            session.id === currentSession.id ? finalSession : session
-          );
-        } else {
-          // 新しいセッションを追加
-          finalSessions = [finalSession, ...chatSessions];
-        }
-
-        setChatSessions(finalSessions);
-        saveChatSessions(finalSessions);
-      } catch (error) {
-        console.error('AI応答エラー:', error);
-        // エラー時はフォールバック応答
-        const aiResponse: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          content: 'すみません、少し調子が悪いようです。もう一度お話を聞かせていただけますか？',
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-          childId: activeChildId
-        };
-
-        const finalMessages = [...updatedMessages, aiResponse];
-        const finalSession: ChatSession = {
-          ...updatedSession,
-          messages: finalMessages,
-          updatedAt: new Date().toISOString()
-        };
-
-        let finalSessions;
-        if (chatSessions.some(session => session.id === currentSession.id)) {
-          finalSessions = chatSessions.map(session =>
-            session.id === currentSession.id ? finalSession : session
-          );
-        } else {
-          finalSessions = [finalSession, ...chatSessions];
-        }
-
-        setChatSessions(finalSessions);
-        saveChatSessions(finalSessions);
-      } finally {
-        setIsAiThinking(false);
-      }
-    })();
-  };
-
-  // Google Gemini AI インスタンス
-  const ai = new GoogleGenAI({
-    apiKey: import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyBW0cLo-OZbPYqNVBFXMbB41-0qC5Q2nuk'
+const App: React.FC = () => {
+  const { user, logout } = useAuth();
+  const [currentView, setCurrentView] = useState('children');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [chatChild, setChatChild] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [chatMessages, setChatMessages] = useState(DEMO_DATA.chatMessages);
+  const [showAddChildModal, setShowAddChildModal] = useState(false);
+  const [newChild, setNewChild] = useState({
+    name: '',
+    birthdate: '',
+    gender: 'female' as 'male' | 'female',
+    parentName: '',
+    parentEmail: ''
   });
 
-  // AI応答を生成（実際のGemini API使用）
-  const generateAiResponse = async (userMessage: string, conversationHistory: ChatMessage[]): Promise<string> => {
-    try {
-      // 子供の情報と会話の文脈を作成
-      const childName = childInfo?.name || 'お子さま';
-      const childAge = childInfo?.age || '';
-      const childGender = childInfo?.gender;
-      const suffix = getChildSuffix(childGender);
+  // ログインしていない場合はLoginPageを表示
+  if (!user) {
+    return <LoginPage />;
+  }
 
-      // 現在のセッションのタイトルから相談テーマを判定
-      const currentSession = getCurrentSession();
-      const sessionTitle = currentSession?.title || '';
+  // 時間フォーマット
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('ja-JP', {
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+  };
 
-      let themeSpecificInstruction = '';
-      if (sessionTitle.includes('発達について')) {
-        themeSpecificInstruction = `
-**発達相談の専門性:**
-- 言葉の発達、運動発達、社会性の発達に詳しい
-- 年齢に応じた発達の目安を知っている
-- 発達の個人差について理解している
-- 具体的な発達促進のアドバイスを提供する`;
-      } else if (sessionTitle.includes('行動について')) {
-        themeSpecificInstruction = `
-**行動相談の専門性:**
-- 食事、睡眠、遊びの習慣に詳しい
-- 年齢に応じた行動パターンを理解している
-- 行動改善の具体的な方法を提案する
-- 友達関係や社会性について専門的な知識を持つ`;
-      } else if (sessionTitle.includes('育児の悩み')) {
-        themeSpecificInstruction = `
-**育児相談の専門性:**
-- 保護者の心理的サポートに長けている
-- 具体的な育児の困りごとの解決策を提案する
-- 家族全体の生活バランスについて考慮する
-- 保護者の負担軽減を重視する`;
-      }
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ja-JP', {
+      month: 'numeric',
+      day: 'numeric'
+    });
+  };
 
-      // 会話履歴を文字列に変換
-      const historyContext = conversationHistory
-        .slice(-6) // 最新の6つのメッセージのみ使用
-        .map(msg => `${msg.sender === 'user' ? '保護者' : 'AI先生'}: ${msg.content}`)
-        .join('\n');
-
-      const prompt = `あなたは子育て支援の専門家です。保護者と${childName}${suffix}（${childAge}歳）について相談を受けています。
-
-**あなたの役割:**
-- 温かく親身になって話を聞く子育て相談の専門家
-- 積極的にヒアリングして詳細を聞き出す
-- 具体的で実践的なアドバイスを提供
-- 保護者の気持ちに共感し、励ます
-
-${themeSpecificInstruction}
-
-**会話の方針:**
-- 必ず質問を含める（2-3個の具体的な質問）
-- 150文字以内で簡潔に
-- 子供の名前を使って親しみやすく
-- 保護者の観察力を褒める
-- 成長の兆候を一緒に見つける
-
-**これまでの会話:**
-${historyContext}
-
-**保護者の最新メッセージ:**
-${userMessage}
-
-上記を踏まえて、温かく共感的で、具体的な質問を含む返答をしてください。`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          thinkingConfig: {
-            thinkingBudget: 0, // Disables thinking
-          },
-        }
-      });
-
-      return response.text || 'お話を聞かせていただき、ありがとうございます。もう少し詳しく教えていただけますか？';
-
-    } catch (error) {
-      console.error('AI応答生成エラー:', error);
-      // フォールバック応答
-      const fallbackResponses = [
-        `なるほど、詳しく教えていただいてありがとうございます。その時の${childInfo?.name}${getChildSuffix(childInfo?.gender)}の表情や反応はどうでしたか？`,
-        `そうですね、よく観察されていますね。その場面で、${childInfo?.name}${getChildSuffix(childInfo?.gender)}は何か特別な様子を見せていましたか？`,
-        `興味深いお話ですね。その出来事の前後で、何か変化はありましたか？例えば、食事や睡眠、遊び方などで気づいたことがあれば聞かせてください。`
-      ];
-      return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+  // 年齢計算
+  const calculateAge = (birthdate: string): number => {
+    if (!birthdate) return 0;
+    const today = new Date();
+    const birthdateObj = new Date(birthdate);
+    let age = today.getFullYear() - birthdateObj.getFullYear();
+    const monthDiff = today.getMonth() - birthdateObj.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthdateObj.getDate())) {
+      age--;
     }
+    return age;
   };
 
-  // メッセージ送信のキーボードイベント
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+  // チャット機能
+  const startChat = (childId: string) => {
+    setChatChild(childId);
   };
 
-  // 画像をBase64エンコードする関数
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        // 画像を圧縮してBase64エンコード
-        const compressedImage = await compressImage(file, {
-          maxWidth: 400,
-          maxHeight: 400,
-          quality: 0.8,
-          maxSizeKB: 300 // 300KB以下に制限
-        });
-        setChildAvatarImage(compressedImage);
-      } catch (error) {
-        console.error('画像の処理に失敗しました:', error);
-        alert('画像の処理に失敗しました。別の画像を試してください。');
-      }
-    }
+  const sendMessage = () => {
+    if (!newMessage.trim() || !chatChild) return;
+
+    const message = {
+      id: `msg_${Date.now()}`,
+      childId: chatChild,
+      sender: 'admin' as const,
+      senderName: '管理者',
+      message: newMessage,
+      timestamp: new Date().toISOString()
+    };
+
+    setChatMessages([...chatMessages, message]);
+    setNewMessage('');
   };
 
+  // 園児追加
+  const handleAddChild = () => {
+    if (!newChild.name.trim() || !newChild.parentName.trim()) return;
 
+    const child = {
+      id: `child_${Date.now()}`,
+      name: newChild.name,
+      age: calculateAge(newChild.birthdate),
+      parentName: newChild.parentName,
+      parentEmail: newChild.parentEmail,
+      lastActivity: new Date().toISOString(),
+      unreadMessages: 0,
+      todayRecords: 0,
+      status: 'active' as const,
+      avatar: newChild.name.charAt(0).toUpperCase() + (newChild.name.charAt(1) || '').toUpperCase(),
+      birthdate: newChild.birthdate,
+      gender: newChild.gender
+    };
 
-  // 子供情報を保存
-  const saveChildInfo = async () => {
-    const age = childBirthdate ? calculateAge(childBirthdate) : 0;
-    if (childName.trim() && childBirthdate && age > 0) {
-      if (editChildId) {
-        // 既存の子供を更新
-        await updateChildInfo(
-          editChildId,
-          childName.trim(),
-          age,
-          childBirthdate,
-          childGender || undefined,
-          childAvatarImage || undefined
-        );
-      } else {
-        // 新しい子供を追加
-        const newChildId = await addChild(
-          childName.trim(),
-          age,
-          childBirthdate,
-          childGender || undefined,
-          childAvatarImage || undefined
-        );
-        // 新しい子供を選択状態にする
-        setActiveChildId(newChildId);
-      }
-
-      setIsChildSettingsOpen(false);
-      setEditChildId(null);
-    }
+    // TODO: 実際のデータ追加処理
+    console.log('園児追加:', child);
+    setShowAddChildModal(false);
+    setNewChild({
+      name: '',
+      birthdate: '',
+      gender: 'female',
+      parentName: '',
+      parentEmail: ''
+    });
   };
 
-  // 今日の記録はRecordContextのtodayEventsを使用（フィルタリング済み）
+  // サイドバーメニュー
+  const sidebarItems = [
+    { id: 'children', label: '園児一覧', icon: Users },
+    { id: 'management', label: '園児管理', icon: UserPlus },
+    { id: 'messages', label: 'メッセージ', icon: MessageSquare, badge: DEMO_DATA.stats.unreadMessages },
+    { id: 'calendar', label: 'カレンダー', icon: Calendar },
+    { id: 'settings', label: '設定', icon: Settings }
+  ];
 
-  // 現在の日付を取得
-  const today = new Date();
-  const formattedDate = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+  // フィルタリングされた園児リスト
+  const filteredChildren = DEMO_DATA.children.filter(child =>
+    child.name.includes(searchQuery) || child.parentName.includes(searchQuery)
+  );
 
-  // 今日の記録
-  const todaysFilteredRecords = todayEvents;
-  const hasRecords = todaysFilteredRecords.length > 0;
-
-  // 記録時間をフォーマットする関数
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // カテゴリーに対応するアイコンとカラーを取得
-  const getCategoryIconAndColor = (category: RecordCategory): { icon: React.ReactNode, bgColor: string, borderColor: string, textColor: string } => {
-    switch (category) {
-      case 'achievement':
-        return {
-          icon: <Award size={16} className="text-emerald-600" />,
-          bgColor: 'bg-emerald-50',
-          borderColor: 'border-emerald-400',
-          textColor: 'text-emerald-600'
-        };
-      case 'happy':
-        return {
-          icon: <Smile size={16} className="text-sky-600" />,
-          bgColor: 'bg-sky-50',
-          borderColor: 'border-sky-400',
-          textColor: 'text-sky-600'
-        };
-      case 'failure':
-        return {
-          icon: <HelpCircle size={16} className="text-amber-600" />,
-          bgColor: 'bg-amber-50',
-          borderColor: 'border-amber-400',
-          textColor: 'text-amber-600'
-        };
-      case 'trouble':
-        return {
-          icon: <AlertTriangle size={16} className="text-rose-600" />,
-          bgColor: 'bg-rose-50',
-          borderColor: 'border-rose-400',
-          textColor: 'text-rose-600'
-        };
-      default:
-        return {
-          icon: <Award size={16} />,
-          bgColor: 'bg-gray-50',
-          borderColor: 'border-gray-400',
-          textColor: 'text-gray-600'
-        };
-    }
-  };
-
-  // タブごとのコンテンツをレンダリングする関数
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'home':
+  // メインコンテンツのレンダリング
+  const renderMainContent = () => {
+    switch (currentView) {
+      case 'children':
         return (
-          <div className="flex flex-col items-center space-y-4">
-            {/* 今日のできたことヘッダー - シンプル版 */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              {childInfo && (
-                <div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-100 to-orange-100 flex items-center justify-center mr-3 overflow-hidden">
-                        {childInfo.avatarImage ? (
-                          <img
-                            src={childInfo.avatarImage}
-                            alt={`${childInfo.name}のアイコン`}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-lg">{childInfo.gender === 'male' ? '👦' : '👧'}</span>
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-base font-medium text-gray-700">
-                            {childInfo.name}{getChildSuffix(childInfo.gender)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          console.log('👶 編集ボタンクリック:', { activeChildId, childrenCount: children.length });
-                          if (activeChildId) {
-                            const childToEdit = children.find(child => child.id === activeChildId);
-                            console.log('👶 編集対象の子供詳細:', childToEdit);
-                            setEditChildId(activeChildId);
-                            setIsChildSettingsOpen(true);
-                          }
-                        }}
-                        className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-medium focus:outline-none"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                        title="お子さまの情報を編集"
-                      >
-                        <Settings size={14} />
-                        <span>編集</span>
-                      </button>
-                      {children.length > 1 && (
-                        <button
-                          onClick={() => setShowChildSelector(true)}
-                          className="flex items-center gap-1 px-2 py-1.5 bg-purple-50 text-purple-600 rounded-lg text-xs font-medium focus:outline-none"
-                          style={{ WebkitTapHighlightColor: 'transparent' }}
-                          title="お子さまを切り替え"
-                        >
-                          <Users size={14} />
-                          <span>切り替え</span>
-                        </button>
-                      )}
-                    </div>
+          <div className="space-y-6">
+            {/* 統計カード */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">総園児数</p>
+                    <p className="text-3xl font-bold text-gray-900">{DEMO_DATA.stats.totalChildren}</p>
                   </div>
-                </div>
-              )}
-
-              {/* 年齢表示 */}
-              {childInfo && childInfo.birthdate && (
-                <div className="mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>🎂</span>
-                    <span>{calculateAge(childInfo.birthdate)}歳</span>
-                    <span>•</span>
-                    <span>{childInfo.birthdate}</span>
+                  <div className="w-12 h-12 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
+                    <Users className="w-6 h-6 text-white" />
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {formattedDate}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 今日の記録サマリー - スマホ対応 */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-xl font-bold text-gray-800">📅 今日の記録</h3>
-                <div className="text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded-full">
-                  {formattedDate}
                 </div>
               </div>
 
-              {hasRecords ? (
-                <div className="space-y-4">
-                  {/* 記録を始めるボタン - 常に表示 */}
-                  <div className="text-center py-4">
-                    <button
-                      onClick={() => setActiveTab('record')}
-                      className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none min-h-12"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      <PlusCircle size={20} />
-                      <span>記録を追加</span>
-                    </button>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">本日の出席</p>
+                    <p className="text-3xl font-bold text-gray-900">{DEMO_DATA.stats.activeToday}</p>
                   </div>
-
-                  {/* カテゴリー別ボタン */}
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    <button
-                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'achievement' ? null : 'achievement')}
-                      className={`p-3 rounded-xl text-center transition-all ${homeActiveCategory === 'achievement'
-                        ? 'bg-green-100 border-2 border-green-300'
-                        : 'bg-green-50 border border-green-200 hover:bg-green-100'
-                        }`}
-                    >
-                      <div className="text-xs text-gray-600 mb-1">できた</div>
-                      <div className="text-lg font-bold text-green-600">
-                        {todaysFilteredRecords.filter(r => r.category === 'achievement').length}
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'happy' ? null : 'happy')}
-                      className={`p-3 rounded-xl text-center transition-all ${homeActiveCategory === 'happy'
-                        ? 'bg-blue-100 border-2 border-blue-300'
-                        : 'bg-blue-50 border border-blue-200 hover:bg-blue-100'
-                        }`}
-                    >
-                      <div className="text-xs text-gray-600 mb-1">嬉しい</div>
-                      <div className="text-lg font-bold text-blue-600">
-                        {todaysFilteredRecords.filter(r => r.category === 'happy').length}
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'failure' ? null : 'failure')}
-                      className={`p-3 rounded-xl text-center transition-all ${homeActiveCategory === 'failure'
-                        ? 'bg-amber-100 border-2 border-amber-300'
-                        : 'bg-amber-50 border border-amber-200 hover:bg-amber-100'
-                        }`}
-                    >
-                                              <div className="text-xs text-gray-600 mb-1">気になる</div>
-                      <div className="text-lg font-bold text-amber-600">
-                        {todaysFilteredRecords.filter(r => r.category === 'failure').length}
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setHomeActiveCategory(homeActiveCategory === 'trouble' ? null : 'trouble')}
-                      className={`p-3 rounded-xl text-center transition-all ${homeActiveCategory === 'trouble'
-                        ? 'bg-red-100 border-2 border-red-300'
-                        : 'bg-red-50 border border-red-200 hover:bg-red-100'
-                        }`}
-                    >
-                      <div className="text-xs text-gray-600 mb-1">困った</div>
-                      <div className="text-lg font-bold text-red-600">
-                        {todaysFilteredRecords.filter(r => r.category === 'trouble').length}
-                      </div>
-                    </button>
+                  <div className="w-12 h-12 bg-gradient-to-r from-green-400 to-emerald-400 rounded-2xl flex items-center justify-center">
+                    <Home className="w-6 h-6 text-white" />
                   </div>
+                </div>
+              </div>
 
-                  {/* カテゴリー別記録一覧 */}
-                  {homeActiveCategory && (
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-gray-800">
-                          {getCategoryName(homeActiveCategory)} ({todaysFilteredRecords.filter(r => r.category === homeActiveCategory).length}件)
-                        </h4>
-                      </div>
-                      <div className="space-y-3">
-                        {todaysFilteredRecords
-                          .filter(record => record.category === homeActiveCategory)
-                          .map(record => {
-                            const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
-                            return (
-                              <div key={record.id} className={`p-4 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
-                                <div className="flex justify-between items-start mb-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className={`w-8 h-8 rounded-full ${bgColor.replace('bg-', 'bg-').replace('-50', '-100')} flex items-center justify-center`}>
-                                      <span className={textColor}>{icon}</span>
-                                    </div>
-                                    <div>
-                                      <span className={`text-sm font-semibold ${textColor}`}>
-                                        {getCategoryName(record.category)}
-                                      </span>
-                                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                                        <Clock size={12} />
-                                        {formatTime(new Date(record.timestamp))}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteClick(record.id)}
-                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                    title="削除"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                                <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">総記録数</p>
+                    <p className="text-3xl font-bold text-gray-900">{DEMO_DATA.stats.totalRecords}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-2xl flex items-center justify-center">
+                    <Edit className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+              </div>
 
-                  {/* 全記録一覧（カテゴリーが選択されていない場合） */}
-                  {!homeActiveCategory && (
-                    <div className="space-y-3">
-                      {todaysFilteredRecords.map(record => {
-                        const { icon, bgColor, borderColor, textColor } = getCategoryIconAndColor(record.category);
-                        return (
-                          <div key={record.id} className={`p-4 rounded-xl ${bgColor} border-l-4 ${borderColor}`}>
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-8 h-8 rounded-full ${bgColor.replace('bg-', 'bg-').replace('-50', '-100')} flex items-center justify-center`}>
-                                  <span className={textColor}>{icon}</span>
-                                </div>
-                                <div>
-                                  <span className={`text-sm font-semibold ${textColor}`}>
-                                    {getCategoryName(record.category)}
-                                  </span>
-                                  <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                                    <Clock size={12} />
-                                    {formatTime(new Date(record.timestamp))}
-                                  </div>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => handleDeleteClick(record.id)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                title="削除"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                            <p className="text-sm text-gray-700 leading-relaxed pl-10">{record.note}</p>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">未読メッセージ</p>
+                    <p className="text-3xl font-bold text-gray-900">{DEMO_DATA.stats.unreadMessages}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center">
+                    <MessageSquare className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 園児一覧 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              <div className="p-6 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900">園児一覧</h2>
+                  <button
+                    onClick={() => setShowAddChildModal(true)}
+                    className="bg-gradient-to-r from-pink-500 to-orange-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
+                  >
+                    <Plus className="w-4 h-4 inline mr-1" />
+                    園児追加
+                  </button>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredChildren.map((child) => (
+                    <div key={child.id} className="bg-gray-50 rounded-2xl p-6 hover:bg-gray-100 transition-all duration-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-12 h-12 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">{child.avatar}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center mx-auto mb-4">
-                    <span className="text-3xl">✍️</span>
-                  </div>
-                  <p className="text-lg text-gray-500 mb-6">今日はまだ記録がありません</p>
-                  <button
-                    onClick={() => setActiveTab('record')}
-                    className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white px-8 py-4 rounded-xl text-lg font-medium shadow-sm min-h-12 focus:outline-none"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <PlusCircle size={20} />
-                    <span>記録を始める</span>
-                  </button>
-                </div>
-              )}
-
-              {/* 子供情報がなければ設定を促す - スマホ対応 */}
-              {!childInfo && (
-                <div className="mt-6 bg-gradient-to-r from-blue-50 to-purple-50 p-5 rounded-xl border border-blue-100">
-                  <div className="flex items-center mb-3">
-                    <span className="text-2xl mr-3">👶</span>
-                    <p className="text-base text-blue-700 font-medium">お子さまの情報を登録しませんか？</p>
-                  </div>
-                  <p className="text-sm text-blue-600 mb-4">記録がより便利で楽しくなります！</p>
-                  <button
-                    onClick={() => {
-                      setEditChildId(null);
-                      setIsChildSettingsOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-xl text-base font-medium shadow-sm min-h-12 focus:outline-none"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <Settings size={18} />
-                    <span>お子さまを登録する</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      case 'chat':
-        return (
-          <div className="flex flex-col h-full overflow-y-auto">
-            {/* 先生相談ヘッダー - シンプル版 */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mr-3">
-                    <MessageSquare className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-800">
-                    先生に相談
-                  </h2>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowChatHistory(!showChatHistory)}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-medium focus:outline-none"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <History size={14} />
-                    <span>履歴</span>
-                  </button>
-                  {getCurrentSession() && (
-                    <button
-                      onClick={() => {
-                        setCurrentSessionId(null);
-                        setShowChatHistory(false);
-                      }}
-                      className="flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium focus:outline-none"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      <Plus size={14} />
-                      <span>新しいチャット</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 気軽に相談ボタン */}
-            {!getCurrentSession() && !showChatHistory && (
-              <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mx-auto mb-3">
-                    <MessageSquare className="w-8 h-8 text-purple-600" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-800 mb-2">気軽にチャットで相談</h3>
-                  <p className="text-gray-500 text-sm mb-4">
-                    テーマを選んでご相談を始めましょう
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <button
-                    onClick={() => createThematicChatSession('development')}
-                    className="w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl p-4 text-left transition-colors"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">発達</span>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-gray-800">発達について相談</h4>
-                        <p className="text-sm text-gray-600">言葉、運動、成長の様子など</p>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => createThematicChatSession('behavior')}
-                    className="w-full bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl p-4 text-left transition-colors"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">行動</span>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-gray-800">行動について相談</h4>
-                        <p className="text-sm text-gray-600">食事、睡眠、遊び、友達関係など</p>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => createThematicChatSession('concerns')}
-                    className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl p-4 text-left transition-colors"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">悩み</span>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-gray-800">育児の悩み相談</h4>
-                        <p className="text-sm text-gray-600">困っていることや不安なことなど</p>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* 実際の先生相談ボタン */}
-                <div className="mt-6 pt-6 border-t border-gray-100">
-                  <button
-                    onClick={() => setShowConsultationModal(true)}
-                    className="w-full bg-gradient-to-r from-orange-50 to-pink-50 border-2 border-orange-200 rounded-xl p-4 text-left transition-all duration-200 hover:shadow-lg hover:border-orange-300"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full flex items-center justify-center">
-                        <UserCheck className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-800">実際の先生とお話ししてみる</h4>
-                        <p className="text-sm text-gray-600">専門家と直接相談できます</p>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">¥3,000</span>
-                          <span className="text-xs text-gray-500">30分の個別相談</span>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ボタン選択画面の下部パディング */}
-            {!getCurrentSession() && !showChatHistory && (
-              <div className="pb-32"></div>
-            )}
-
-            {/* チャット履歴表示 */}
-            {showChatHistory && (
-              <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 max-h-60 overflow-y-auto">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">チャット履歴</h4>
-                <div className="space-y-2">
-                  {chatSessions.length > 0 ? (
-                    chatSessions.map(session => (
-                      <div
-                        key={session.id}
-                        className={`p-3 rounded-lg transition-colors ${session.id === currentSessionId
-                          ? 'bg-orange-50 border border-orange-200'
-                          : 'bg-gray-50 hover:bg-gray-100'
-                          }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div
-                            onClick={() => {
-                              setCurrentSessionId(session.id);
-                              setShowChatHistory(false);
-                            }}
-                            className="flex-1 cursor-pointer"
-                          >
-                            <div className="text-sm font-medium text-gray-800 truncate">
-                              {session.title}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {formatTime(new Date(session.updatedAt))}
-                            </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{child.name}</h3>
+                            <p className="text-sm text-gray-500">{child.age}歳</p>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteSession(session.id);
-                            }}
-                            className="p-1 rounded-full hover:bg-red-100 transition-colors text-red-500 hover:text-red-700"
-                            title="この履歴を削除"
-                          >
-                            <Trash2 size={14} />
-                          </button>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-6">
-                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                        <History size={20} className="text-gray-400" />
-                      </div>
-                      <p className="text-gray-500 text-sm">
-                        まだチャット履歴がありません
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* チャットメッセージエリア - ChatGPT風 */}
-            {getCurrentSession() && (
-              <div className="flex-1 chat-scroll-container pb-4 min-h-0" ref={chatScrollContainerRef}>
-                {getCurrentSession()?.messages.map(message => (
-                  <div key={message.id} className={`flex items-start space-x-3 mb-4 px-4 chat-message ${message.sender === 'user' ? 'justify-end' : ''}`}>
-                    {message.sender === 'ai' && (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs font-medium">先生</span>
-                      </div>
-                    )}
-
-                    <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
-                      <div className={`inline-block px-4 py-3 rounded-2xl max-w-xs lg:max-w-md ${message.sender === 'ai'
-                        ? 'bg-purple-50 border border-purple-200 rounded-tl-md text-gray-800'
-                        : 'bg-orange-500 text-white rounded-tr-md'
-                        }`}>
-                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                          {message.content}
-                        </div>
-                      </div>
-                      <p className={`text-xs text-gray-500 mt-2 ${message.sender === 'user' ? 'mr-4' : 'ml-4'}`}>
-                        {formatTime(new Date(message.timestamp))}
-                      </p>
-                    </div>
-
-                    {message.sender === 'user' && (
-                      <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
-                        <User size={16} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* AI思考中の表示 */}
-                {isAiThinking && (
-                  <div className="flex items-start space-x-3 mb-4 px-4 chat-message">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
-                      <span className="text-white text-xs font-medium">先生</span>
-                    </div>
-                    <div className="flex-1">
-                      <div className="inline-block bg-purple-50 border border-purple-200 rounded-2xl rounded-tl-md px-4 py-3">
-                        <div className="flex items-center space-x-1">
-                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2 ml-4">考え中...</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* 自動スクロール用の参照点 */}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-
-            {/* メッセージ入力エリア - ナビゲーションバーと重ならないように配置 */}
-            {getCurrentSession() && (
-              <div className="bg-white border-t border-gray-200 p-4 mb-20">
-                <div className="flex items-end space-x-3">
-                  <div className="flex-1">
-                    <textarea
-                      value={currentMessage}
-                      onChange={(e) => setCurrentMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder="今日の様子や気になることを教えてください..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm resize-none leading-relaxed"
-                      disabled={isAiThinking}
-                      rows={2}
-                    />
-                  </div>
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!currentMessage.trim() || isAiThinking}
-                    className="w-12 h-12 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
-                  >
-                    <Send size={18} className="text-white" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
-        {/* 先生相談モーダル */ }
-        {
-          showConsultationModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl mx-4 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
-                  <div className="text-center mb-6">
-                    <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <UserCheck className="w-8 h-8 text-white" />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-800 mb-2">
-                      実際の先生に相談
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      専門家と直接お話しできます
-                    </p>
-                  </div>
-
-                  {/* 料金表示 */}
-                  <div className="bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-200 rounded-2xl p-4 mb-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-bold text-gray-800">相談料金</h3>
-                        <p className="text-sm text-gray-600">30分の個別相談</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-orange-600">¥3,000</div>
-                        <div className="text-xs text-gray-500">税込</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 先生の紹介 */}
-                  <div className="mb-6">
-                    <h3 className="font-bold text-gray-800 mb-3">担当先生</h3>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                          <span className="text-white font-medium">田中</span>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-800">田中 美咲 先生</h4>
-                          <p className="text-sm text-gray-600">保育士・子育てアドバイザー</p>
-                          <p className="text-xs text-gray-500">10年以上の子育て支援経験</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 相談内容の例 */}
-                  <div className="mb-6">
-                    <h3 className="font-bold text-gray-800 mb-3">相談内容の例</h3>
-                    <div className="space-y-2">
-                      <div className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-gray-600">発達の遅れが気になる</p>
-                      </div>
-                      <div className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-gray-600">友達との関係で悩んでいる</p>
-                      </div>
-                      <div className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-gray-600">子育ての方向性に迷っている</p>
-                      </div>
-                      <div className="flex items-start space-x-2">
-                        <div className="w-2 h-2 bg-orange-400 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-gray-600">具体的なアドバイスが欲しい</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 予約ボタン */}
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => {
-                        // ここで実際の予約処理を行う
-                        alert('予約機能は現在開発中です。\n\n予約の流れ：\n1. 希望日時を選択\n2. 相談内容を入力\n3. 決済処理\n4. 予約確定\n\n料金：¥3,000（30分）');
-                        setShowConsultationModal(false);
-                      }}
-                      className="w-full bg-gradient-to-r from-orange-500 to-pink-500 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition-all duration-200 active:scale-95"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      予約する
-                    </button>
-                    <button
-                      onClick={() => setShowConsultationModal(false)}
-                      className="w-full border border-gray-300 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-50 transition-colors"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        }
-      case 'record':
-        return (
-          <div className="flex flex-col items-center space-y-4 pb-20 record-content">
-            {/* 記録ヘッダー - シンプル版 */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-blue-100 flex items-center justify-center mr-3">
-                    <span className="text-lg">📝</span>
-                  </div>
-                  <h2 className="text-lg font-bold text-gray-800">
-                    {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}の記録` : '今日の記録'}
-                  </h2>
-                </div>
-                <div className="text-xs text-gray-400">
-                  {formattedDate}
-                </div>
-              </div>
-            </div>
-
-            {/* カテゴリー選択 */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                <span className="mr-2">🎯</span>
-                今日あったことを記録しましょう
-              </h3>
-              <p className="text-sm text-gray-500 mb-4">
-                カテゴリーを選ぶとすぐに記録できます
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleCategorySelect('achievement')}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 bg-green-50 border-green-200 focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-3 border-2 border-green-200"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <Award size={24} className="text-green-600" />
-                  </div>
-                  <span className="text-sm font-bold text-gray-800">できたこと</span>
-                  <span className="text-xs text-gray-500 mt-1">成功・達成</span>
-                </button>
-
-                <button
-                  onClick={() => handleCategorySelect('happy')}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 bg-blue-50 border-blue-200 focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-3 border-2 border-blue-200"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <Smile size={24} className="text-blue-600" />
-                  </div>
-                  <span className="text-sm font-bold text-gray-800">嬉しかったこと</span>
-                  <span className="text-xs text-gray-500 mt-1">楽しい・幸せ</span>
-                </button>
-
-                <button
-                  onClick={() => handleCategorySelect('failure')}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 bg-amber-50 border-amber-200 focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mb-3 border-2 border-amber-200"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <HelpCircle size={24} className="text-amber-600" />
-                  </div>
-                                          <span className="text-sm font-bold text-gray-800">気になること</span>
-                  <span className="text-xs text-gray-500 mt-1">心配・疑問</span>
-                </button>
-
-                <button
-                  onClick={() => handleCategorySelect('trouble')}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl border-2 bg-red-50 border-red-200 focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                >
-                  <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-3 border-2 border-red-200"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}>
-                    <AlertTriangle size={24} className="text-red-600" />
-                  </div>
-                  <span className="text-sm font-bold text-gray-800">困ったこと</span>
-                  <span className="text-xs text-gray-500 mt-1">問題・悩み</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 今日の記録一覧 - シンプル版 */}
-            {hasRecords && (
-              <RecordSummary
-                records={todaysFilteredRecords}
-                onDeleteRecord={handleDeleteClick}
-                getCategoryName={getCategoryName}
-                formatTime={formatTime}
-              />
-            )}
-
-            {/* 記録モーダル */}
-            {showRecordModal && (
-              <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-                <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-                  <div className="text-center mb-6">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mx-auto mb-3">
-                      <span className="text-2xl">📝</span>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {getCategoryName(activeCategory)}を記録
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      今日あったことを詳しく教えてください
-                    </p>
-                  </div>
-
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        詳細内容
-                      </label>
-                      <textarea
-                        value={recordNote}
-                        onChange={(e) => {
-                          setRecordNote(e.target.value);
-                          if (e.target.value.trim()) setRecordError('');
-                        }}
-                        placeholder={`${getCategoryName(activeCategory)}の内容を詳しく記録してください`}
-                        className={`w-full p-4 border rounded-2xl text-sm focus:ring-2 focus:ring-pink-300 focus:border-pink-300 transition-all bg-gray-50 focus:bg-white ${recordError ? 'border-red-300' : 'border-gray-200'
-                          }`}
-                        rows={5}
-                      />
-                      {recordError && <p className="mt-2 text-sm text-red-500 flex items-center gap-1">
-                        <AlertCircle size={16} />
-                        {recordError}
-                      </p>}
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        onClick={() => {
-                          setShowRecordModal(false);
-                          setRecordError('');
-                        }}
-                        className="flex-1 py-3 px-4 border border-gray-300 rounded-2xl text-sm font-semibold bg-white focus:outline-none"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                      >
-                        キャンセル
-                      </button>
-                      <button
-                        onClick={handleRecordSubmit}
-                        className="flex-1 py-3 px-4 bg-gradient-to-r from-pink-500 to-orange-400 text-white rounded-2xl text-sm font-semibold shadow-md focus:outline-none"
-                        style={{ WebkitTapHighlightColor: 'transparent' }}
-                      >
-                        記録する
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      case 'calendar':
-        return (
-          <div className="flex flex-col h-full overflow-hidden">
-            {/* ヘッダー部分 - 固定 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mx-4 mt-4 mb-2 flex-shrink-0">
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center mr-3">
-                      <span className="text-lg">📅</span>
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-800">
-                      記録カレンダー
-                    </h2>
-                  </div>
-                </div>
-
-                {/* 表示モード切り替えボタン */}
-                <div className="flex justify-center">
-                  <div className="bg-gray-100 rounded-lg p-1 flex">
-                    <button
-                      onClick={() => setCalendarViewMode('month')}
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'month'
-                        ? 'bg-white text-gray-800 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800'
-                        }`}
-                    >
-                      カレンダー
-                    </button>
-                    <button
-                      onClick={() => setCalendarViewMode('week')}
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'week'
-                        ? 'bg-white text-gray-800 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800'
-                        }`}
-                    >
-                      週間
-                    </button>
-                    <button
-                      onClick={() => setCalendarViewMode('monthly')}
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${calendarViewMode === 'monthly'
-                        ? 'bg-white text-gray-800 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800'
-                        }`}
-                    >
-                      月間
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* カレンダーコンテンツ部分 - スクロール可能 */}
-            <div className="flex-1 overflow-y-auto px-4 pb-24">
-              <div className="space-y-4">
-                {calendarViewMode === 'month' ? <CalendarView /> :
-                  calendarViewMode === 'week' ? <WeeklyView /> :
-                    <MonthlyView />}
-              </div>
-            </div>
-          </div>
-        );
-      case 'growth':
-        return <GrowthRecords />;
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="full-screen-container bg-gray-50 flex flex-col">
-      {/* ヘッダー - スマホ対応の見やすいデザイン */}
-      <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-200">
-        <div className="container mx-auto max-w-md px-4 py-4 flex justify-between items-center">
-          <div className="w-10 h-10"></div> {/* スペーサー要素 */}
-          <h1
-            className="text-xl font-bold text-gray-800 flex items-center cursor-pointer min-h-12 flex-1 justify-center focus:outline-none"
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-            onClick={() => setShowChildSelector(true)}
-          >
-            <span className="text-pink-500 text-2xl">✨</span>
-            <span className="mx-2">きょうのできた</span>
-            {childInfo && (
-              <span className="text-sm font-normal ml-1 flex items-center text-gray-600">
-                (<span className="text-pink-500">{childInfo.name}{getChildSuffix(childInfo.gender)}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>)
-              </span>
-            )}
-          </h1>
-          {user && (
-            <div className="relative">
-              <button
-                className="user-menu-button w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center focus:outline-none overflow-hidden"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log('👤 ユーザーメニューボタンクリック:', !showUserMenu);
-                  setShowUserMenu(!showUserMenu);
-                }}
-                aria-label="ユーザーメニュー"
-                title="ユーザーメニュー"
-              >
-                {user.avatarImage ? (
-                  <img
-                    src={user.avatarImage}
-                    alt="保護者アイコン"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User size={18} className="text-pink-600" />
-                )}
-              </button>
-
-              {showUserMenu && (
-                <div className="user-menu absolute right-0 top-12 w-48 bg-white rounded-xl shadow-lg border border-gray-200 z-50">
-                  <div className="py-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        console.log('👤 保護者名変更ボタンクリック');
-                        setParentName(user?.username || '');
-                        setIsParentSettingsOpen(true);
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 focus:outline-none flex items-center gap-3"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      <Settings size={16} />
-                      保護者名変更
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        console.log('👤 ログアウトボタンクリック');
-                        setShowLogoutConfirm(true);
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 focus:outline-none flex items-center gap-3"
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                        <polyline points="16,17 21,12 16,7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                      </svg>
-                      ログアウト
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* メインコンテンツ - スマホ対応 */}
-      <div className="container mx-auto max-w-md mobile-safe-padding pt-6 pb-24 flex-1 scroll-container">
-        {activeTab === 'chat' ? (
-          <div className="h-full">
-            {renderContent()}
-          </div>
-        ) : (
-          renderContent()
-        )}
-      </div>
-
-      {/* 下部ナビゲーション */}
-      <BottomNavigationBar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
-
-      {/* ログアウト確認ダイアログ */}
-      <LogoutConfirmDialog
-        isOpen={showLogoutConfirm}
-        onClose={() => setShowLogoutConfirm(false)}
-        onConfirm={() => {
-          logout();
-          setShowLogoutConfirm(false);
-        }}
-      />
-
-      {/* 削除確認ダイアログ */}
-      <Dialog open={showDeleteConfirm} onClose={handleDeleteCancel} className="relative z-50">
-        <div className="fixed inset-0 bg-black/40" aria-hidden="true" />
-
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
-              今日の記録を削除
-            </Dialog.Title>
-
-            <p className="text-sm text-gray-600 mb-6">
-              この記録を削除してもよろしいですか？<br />
-              <span className="text-xs text-gray-500">※削除された記録は復元できません</span>
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2.5 border border-gray-300 rounded-xl text-sm font-medium"
-                onClick={handleDeleteCancel}
-              >
-                キャンセル
-              </button>
-              <button
-                className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium"
-                onClick={handleDeleteConfirm}
-              >
-                削除する
-              </button>
-            </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* セッション削除確認ダイアログ */}
-      <Dialog open={showDeleteSessionConfirm} onClose={handleDeleteSessionCancel} className="relative z-50">
-        <div className="fixed inset-0 bg-black/40" aria-hidden="true" />
-
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
-              チャット履歴を削除
-            </Dialog.Title>
-
-            <p className="text-sm text-gray-600 mb-6">
-              この会話の履歴がすべて削除されます。<br />
-              <span className="text-xs text-gray-500">※削除された履歴は復元できません</span>
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2.5 border border-gray-300 rounded-xl text-sm font-medium"
-                onClick={handleDeleteSessionCancel}
-              >
-                キャンセル
-              </button>
-              <button
-                className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium"
-                onClick={handleDeleteSessionConfirm}
-              >
-                削除する
-              </button>
-            </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* 子供選択ダイアログ - 育児アプリ風デザイン */}
-      <Dialog open={showChildSelector} onClose={() => setShowChildSelector(false)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/20" aria-hidden="true" />
-
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-            <Dialog.Title className="text-lg font-bold text-gray-800 mb-1 flex items-center">
-              <span className="text-pink-500 mr-2">👶</span>
-              お子さまを選択
-            </Dialog.Title>
-            <p className="text-sm text-gray-500 mb-4">記録するお子さまを選んでください</p>
-
-            <div className="space-y-3 mb-6">
-              {children.length > 0 ? (
-                children.map(child => (
-                  <button
-                    key={child.id}
-                    className={`w-full p-4 rounded-xl flex items-center justify-between focus:outline-none ${activeChildId === child.id
-                      ? 'bg-pink-50 border-2 border-pink-300'
-                      : 'bg-gray-50 border-2 border-transparent'
-                      }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => {
-                      setActiveChildId(child.id);
-                      setShowChildSelector(false);
-                    }}
-                  >
-                    <div className="flex items-center">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center mr-3 overflow-hidden ${child.gender === 'male' ? 'bg-blue-100' : 'bg-pink-100'
-                        }`}>
-                        {child.avatarImage ? (
-                          <img
-                            src={child.avatarImage}
-                            alt={`${child.name}のアイコン`}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-lg">
-                            {child.gender === 'male' ? '👦' : '👧'}
+                        {child.unreadMessages > 0 && (
+                          <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                            {child.unreadMessages}
                           </span>
                         )}
                       </div>
-                      <div className="text-left">
-                        <div className="font-medium text-gray-800">{child.name}{getChildSuffix(child.gender)}</div>
-                        <div className="text-sm text-gray-500">{child.age}歳</div>
+
+                      <div className="space-y-2 mb-4">
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">保護者:</span> {child.parentName}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">今日の記録:</span> {child.todayRecords}件
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">最終活動:</span> {formatTime(child.lastActivity)}
+                        </p>
+                      </div>
+
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => startChat(child.id)}
+                          className="flex-1 bg-pink-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-pink-600 transition-all duration-200 flex items-center justify-center"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          チャット
+                        </button>
+                        <button className="flex-1 bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-300 transition-all duration-200 flex items-center justify-center">
+                          <Eye className="w-4 h-4 mr-1" />
+                          詳細
+                        </button>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
 
-                    {activeChildId === child.id && (
-                      <div className="text-pink-500">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
+      case 'management':
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">園児管理</h2>
+            <div className="grid grid-cols-1 gap-6">
+              {DEMO_DATA.children.map((child) => (
+                <div key={child.id} className="border border-gray-200 rounded-xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-16 h-16 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">{child.avatar}</span>
                       </div>
-                    )}
-                  </button>
-                ))
-              ) : (
-                <div className="text-center p-6 bg-gray-50 rounded-xl">
-                  <span className="text-4xl mb-2 block">👶</span>
-                  <p className="text-gray-500 mb-2">まだお子さまが登録されていません</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                className="flex-1 px-4 py-3 text-sm font-medium text-pink-600 bg-pink-50 rounded-xl focus:outline-none"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                onClick={() => {
-                  setEditChildId(null);
-                  setShowChildSelector(false);
-                  setIsChildSettingsOpen(true);
-                }}
-              >
-                ➕ 新しいお子さまを追加
-              </button>
-
-              <button
-                type="button"
-                className="px-6 py-3 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl focus:outline-none"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                onClick={() => setShowChildSelector(false)}
-              >
-                閉じる
-              </button>
-            </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* 子供設定ダイアログ - 育児アプリ風デザイン */}
-      <Dialog open={isChildSettingsOpen} onClose={() => setIsChildSettingsOpen(false)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/20" aria-hidden="true" />
-
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
-            <Dialog.Title className="text-lg font-bold text-gray-800 mb-1 flex items-center">
-              <span className="text-pink-500 mr-2">👶</span>
-              {editChildId ? 'お子さま情報の編集' : '新しいお子さまを登録'}
-            </Dialog.Title>
-            <p className="text-sm text-gray-500 mb-6">
-              {editChildId ? '情報を編集してください' : 'お子さまの基本情報を入力してください'}
-            </p>
-
-            <div className="space-y-5">
-              <div>
-                <label htmlFor="child-name" className="block text-sm font-medium text-gray-700 mb-2">
-                  お名前 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="child-name"
-                  value={childName}
-                  onChange={(e) => setChildName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  placeholder="例：たろう"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  アイコン写真
-                </label>
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
-                    {childAvatarImage ? (
-                      <img
-                        src={childAvatarImage}
-                        alt="アイコン"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl text-gray-400">📷</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      id="avatar-upload"
-                    />
-                    <label
-                      htmlFor="avatar-upload"
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none cursor-pointer"
-                    >
-                      📱 写真を選択
-                    </label>
-                    {childAvatarImage && (
-                      <button
-                        type="button"
-                        onClick={() => setChildAvatarImage('')}
-                        className="ml-2 text-sm text-red-600 hover:text-red-800"
-                      >
-                        削除
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">{child.name}</h3>
+                        <p className="text-gray-600">{child.age}歳 • {child.gender === 'male' ? '男の子' : '女の子'}</p>
+                        <p className="text-sm text-gray-500">生年月日: {child.birthdate}</p>
+                        <p className="text-sm text-gray-500">保護者: {child.parentName} ({child.parentEmail})</p>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                        <Edit className="w-4 h-4 inline mr-1" />
+                        編集
                       </button>
-                    )}
+                      <button className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  スマホのカメラフォルダーから写真を選択できます（自動で圧縮されます）
-                </p>
-              </div>
-
-              {childBirthdate && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    年齢 <span className="text-xs text-gray-500 ml-2">(誕生日から自動計算)</span>
-                  </label>
-                  <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                    {calculateAge(childBirthdate)}歳
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  誕生日
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? new Date(childBirthdate).getFullYear().toString() : ''}
-                      onChange={(e) => {
-                        const year = e.target.value;
-                        if (!year) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setFullYear(parseInt(year));
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">年</option>
-                      {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? (new Date(childBirthdate).getMonth() + 1).toString() : ''}
-                      onChange={(e) => {
-                        const month = e.target.value;
-                        if (!month) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setMonth(parseInt(month) - 1);
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">月</option>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
-                        <option key={month} value={month}>{month}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? new Date(childBirthdate).getDate().toString() : ''}
-                      onChange={(e) => {
-                        const day = e.target.value;
-                        if (!day) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setDate(parseInt(day));
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">日</option>
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                        <option key={day} value={day}>{day}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  性別
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'male'
-                      ? 'border-blue-300 bg-blue-50 text-blue-800'
-                      : 'border-gray-200 bg-white text-gray-700'
-                      }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => setChildGender('male')}
-                  >
-                    <span className="mr-2">👦</span>
-                    男の子
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'female'
-                      ? 'border-pink-300 bg-pink-50 text-pink-800'
-                      : 'border-gray-200 bg-white text-gray-700'
-                      }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => setChildGender('female')}
-                  >
-                    <span className="mr-2">👧</span>
-                    女の子
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
+          </div>
+        );
 
-            <div className="mt-8 flex gap-3">
-              {editChildId && (
-                <button
-                  type="button"
-                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => {
-                    if (window.confirm('本当に削除しますか？')) {
-                      removeChild(editChildId);
-                      setIsChildSettingsOpen(false);
-                      setEditChildId(null);
-                    }
-                  }}
-                >
-                  🗑️ 削除
-                </button>
-              )}
-
-              <div className="flex-1 flex gap-3">
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => setIsChildSettingsOpen(false)}
-                >
-                  キャンセル
-                </button>
-
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-sm focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={saveChildInfo}
-                >
-                  {editChildId ? '保存' : '登録'}
-                </button>
-              </div>
+      case 'messages':
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">メッセージ一覧</h2>
+            <div className="space-y-4">
+              {DEMO_DATA.children
+                .filter(child => child.unreadMessages > 0)
+                .map((child) => (
+                  <div key={child.id} className="border border-gray-200 rounded-xl p-6 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
+                          <span className="text-white font-bold text-sm">{child.avatar}</span>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{child.name}の保護者</h3>
+                          <p className="text-sm text-gray-600">{child.parentName}</p>
+                          <p className="text-xs text-gray-500">最新メッセージ: {formatTime(child.lastActivity)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full">
+                          {child.unreadMessages}件
+                        </span>
+                        <button
+                          onClick={() => startChat(child.id)}
+                          className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition-colors"
+                        >
+                          返信
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
             </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
+          </div>
+        );
 
-      {/* 保護者設定ダイアログ */}
-      <Dialog open={isParentSettingsOpen} onClose={() => setIsParentSettingsOpen(false)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/20" aria-hidden="true" />
+      case 'calendar':
+        return <CalendarView />;
 
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-            <Dialog.Title className="text-lg font-bold text-gray-800 mb-1 flex items-center">
-              <span className="text-blue-500 mr-2">👤</span>
-              保護者名変更
-            </Dialog.Title>
-            <p className="text-sm text-gray-500 mb-6">保護者名を変更してください</p>
-
-            <div className="space-y-5">
-              <div>
-                <label htmlFor="parent-name" className="block text-sm font-medium text-gray-700 mb-2">
-                  保護者名 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="parent-name"
-                  value={parentName}
-                  onChange={(e) => setParentName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="保護者名を入力"
-                />
-              </div>
-            </div>
-
-            <div className="mt-8 flex gap-3">
-              <button
-                type="button"
-                className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl focus:outline-none"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                onClick={() => setIsParentSettingsOpen(false)}
-              >
-                キャンセル
-              </button>
-
-              <button
-                type="button"
-                className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl shadow-sm focus:outline-none"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
-                onClick={() => {
-                  if (parentName.trim()) {
-                    updateUser(parentName.trim(), user?.avatarImage);
-                    setIsParentSettingsOpen(false);
-                  }
-                }}
-              >
-                保存
-              </button>
-            </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-    </div>
-  );
-}
-
-// 初回子供情報登録コンポーネント
-function InitialChildSetup() {
-  const {
-    addChild,
-    setActiveChildId
-  } = useRecord();
-
-  const [childName, setChildName] = useState('');
-  const [childBirthdate, setChildBirthdate] = useState('');
-  const [childGender, setChildGender] = useState<'male' | 'female' | ''>('');
-  const [childAvatarImage, setChildAvatarImage] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // 画像をBase64エンコードする関数
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        // 画像を圧縮してBase64エンコード
-        const compressedImage = await compressImage(file, {
-          maxWidth: 400,
-          maxHeight: 400,
-          quality: 0.8,
-          maxSizeKB: 300 // 300KB以下に制限
-        });
-        setChildAvatarImage(compressedImage);
-      } catch (error) {
-        console.error('画像の処理に失敗しました:', error);
-        alert('画像の処理に失敗しました。別の画像を試してください。');
-      }
+      default:
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">{sidebarItems.find(item => item.id === currentView)?.label}</h2>
+            <p className="text-gray-600">この機能は準備中です</p>
+          </div>
+        );
     }
   };
-
-  const handleSubmit = async () => {
-    if (!childName.trim() || !childBirthdate || !childGender) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const age = calculateAge(childBirthdate);
-      console.log('👶 初回設定で子供情報を保存:', {
-        name: childName.trim(),
-        age,
-        birthdate: childBirthdate,
-        gender: childGender,
-        hasAvatar: !!childAvatarImage
-      });
-      const newChildId = await addChild(
-        childName.trim(),
-        age,
-        childBirthdate,
-        childGender,
-        childAvatarImage || undefined
-      );
-      console.log('👶 新しい子供ID:', newChildId);
-      setActiveChildId(newChildId);
-    } catch (error) {
-      console.error('子供情報の登録に失敗しました:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const isFormValid = childName.trim() && childBirthdate && childGender;
 
   return (
-    <div className="full-screen-container bg-gradient-to-b from-pink-50 to-purple-50 flex items-center justify-center mobile-safe-padding">
-      <div className="w-full max-w-md">
-        {/* ヘッダー */}
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center mx-auto mb-4">
-            <span className="text-4xl">👶</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">きょうのできた</h1>
-          <h2 className="text-xl font-bold text-pink-500 mb-3">お子さまの情報を登録してください</h2>
-          <p className="text-sm text-gray-600 mb-2">
-            お子さまの成長記録を始めるために、まずは基本情報を教えてください
-          </p>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2">
-            <p className="text-xs text-blue-700 font-medium">
-              💾 一度登録すると、この情報は自動的に保存されます。<br />
-              次回からは毎回入力する必要がありません！
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* サイドバー */}
+      <div className="fixed inset-y-0 left-0 w-72 bg-white border-r border-gray-200 z-50">
+        {/* ロゴ */}
+        <div className="h-16 flex items-center px-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-pink-500 to-orange-500 rounded-2xl flex items-center justify-center">
+              <Building className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">今日のできた</h1>
+              <p className="text-xs text-gray-500">管理者画面</p>
+            </div>
           </div>
         </div>
 
-        {/* 登録フォーム */}
-        <div className="bg-white rounded-3xl shadow-lg p-8">
-          <div className="space-y-6">
-            {/* 名前 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                お名前 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={childName}
-                onChange={(e) => setChildName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                placeholder="例：たろう"
-                disabled={isSubmitting}
-              />
+        {/* 事業所情報 */}
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-gradient-to-r from-pink-100 to-orange-100 rounded-2xl flex items-center justify-center">
+              <User className="w-6 h-6 text-pink-600" />
             </div>
-
-            {/* アイコン写真 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                アイコン写真
-              </label>
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
-                  {childAvatarImage ? (
-                    <img
-                      src={childAvatarImage}
-                      alt="アイコン"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-2xl text-gray-400">📷</span>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    id="avatar-upload-initial"
-                    disabled={isSubmitting}
-                  />
-                  <label
-                    htmlFor="avatar-upload-initial"
-                    className={`inline-flex items-center px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium ${isSubmitting
-                      ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                      : 'text-gray-700 bg-white hover:bg-gray-50 cursor-pointer'
-                      }`}
-                  >
-                    📱 写真を選択
-                  </label>
-                  {childAvatarImage && (
-                    <button
-                      type="button"
-                      onClick={() => setChildAvatarImage('')}
-                      className="ml-2 text-sm text-red-600 hover:text-red-800"
-                      disabled={isSubmitting}
-                    >
-                      削除
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                スマホのカメラフォルダーから写真を選択できます（自動で圧縮されます）
-              </p>
-            </div>
-
-            {/* 誕生日 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                誕生日 <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <select
-                  className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                  value={childBirthdate ? new Date(childBirthdate).getFullYear().toString() : ''}
-                  onChange={(e) => {
-                    const year = e.target.value;
-                    if (!year) return;
-                    const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                    currentDate.setFullYear(parseInt(year));
-                    const newBirthdate = currentDate.toISOString().split('T')[0];
-                    setChildBirthdate(newBirthdate);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  <option value="">年</option>
-                  {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-
-                <select
-                  className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                  value={childBirthdate ? (new Date(childBirthdate).getMonth() + 1).toString() : ''}
-                  onChange={(e) => {
-                    const month = e.target.value;
-                    if (!month) return;
-                    const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                    currentDate.setMonth(parseInt(month) - 1);
-                    const newBirthdate = currentDate.toISOString().split('T')[0];
-                    setChildBirthdate(newBirthdate);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  <option value="">月</option>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
-                    <option key={month} value={month}>{month}</option>
-                  ))}
-                </select>
-
-                <select
-                  className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                  value={childBirthdate ? new Date(childBirthdate).getDate().toString() : ''}
-                  onChange={(e) => {
-                    const day = e.target.value;
-                    if (!day) return;
-                    const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                    currentDate.setDate(parseInt(day));
-                    const newBirthdate = currentDate.toISOString().split('T')[0];
-                    setChildBirthdate(newBirthdate);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  <option value="">日</option>
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                    <option key={day} value={day}>{day}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* 年齢表示 */}
-            {childBirthdate && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  年齢 <span className="text-xs text-gray-500 ml-2">(誕生日から自動計算)</span>
-                </label>
-                <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
-                  {calculateAge(childBirthdate)}歳
-                </div>
-              </div>
-            )}
-
-            {/* 性別 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                性別 <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'male'
-                    ? 'border-blue-300 bg-blue-50 text-blue-800'
-                    : 'border-gray-200 bg-white text-gray-700'
-                    }`}
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => setChildGender('male')}
-                  disabled={isSubmitting}
-                >
-                  <span className="mr-2">👦</span>
-                  男の子
-                </button>
-                <button
-                  type="button"
-                  className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'female'
-                    ? 'border-pink-300 bg-pink-50 text-pink-800'
-                    : 'border-gray-200 bg-white text-gray-700'
-                    }`}
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => setChildGender('female')}
-                  disabled={isSubmitting}
-                >
-                  <span className="mr-2">👧</span>
-                  女の子
-                </button>
-              </div>
+              <p className="font-semibold text-gray-900">{user.facility.name}</p>
+              <p className="text-sm text-gray-500">{user.facility.adminName}</p>
             </div>
           </div>
+        </div>
 
-          {/* 登録ボタン */}
-          <div className="mt-8">
-            <button
-              onClick={handleSubmit}
-              disabled={!isFormValid || isSubmitting}
-              className={`w-full py-4 px-6 rounded-xl text-lg font-medium shadow-sm focus:outline-none ${isFormValid && !isSubmitting
-                ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                }`}
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              {isSubmitting ? '情報を保存中...' : '情報を保存して始める'}
+        {/* ナビゲーション */}
+        <nav className="flex-1 px-4 py-6">
+          <div className="space-y-2">
+            {sidebarItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentView(item.id)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${isActive
+                      ? 'bg-gradient-to-r from-pink-50 to-orange-50 text-pink-700 border border-pink-200'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <Icon className="w-5 h-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* ログアウト */}
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={logout}
+            className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">ログアウト</span>
+          </button>
+        </div>
+      </div>
+
+      {/* メインコンテンツ */}
+      <div className="ml-72">
+        {/* ヘッダー */}
+        <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-bold text-gray-900">
+              {sidebarItems.find(item => item.id === currentView)?.label}
+            </h2>
+          </div>
+          <div className="flex items-center space-x-4">
+            {/* 検索 */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="園児を検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-gray-100 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:bg-white transition-all duration-200"
+              />
+            </div>
+            {/* 通知ベル */}
+            <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all duration-200">
+              <Bell className="w-5 h-5" />
+              {DEMO_DATA.stats.unreadMessages > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {DEMO_DATA.stats.unreadMessages}
+                </span>
+              )}
             </button>
           </div>
         </div>
 
-        {/* フッター */}
-        <div className="text-center mt-6">
-          <p className="text-xs text-gray-500">
-            登録後、いつでも設定から情報を変更できます
-          </p>
+        {/* メインコンテンツエリア */}
+        <div className="p-8">
+          {renderMainContent()}
         </div>
       </div>
-    </div>
-  );
-}
 
-// データ移行確認コンポーネント
-function DataMigrationPrompt() {
-  const { migrateFromLocalStorage } = useRecord();
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleMigrate = async () => {
-    setIsLoading(true);
-    try {
-      await migrateFromLocalStorage();
-    } catch (error) {
-      console.error('データ移行エラー:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSkip = () => {
-    localStorage.setItem('dataMigrated', 'true');
-    window.location.reload();
-  };
-
-  return (
-    <div className="full-screen-container flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50 mobile-safe-padding">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">データ移行</h2>
-          <p className="text-gray-600">
-            以前のデータをクラウドに移行しますか？
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <button
-            onClick={handleMigrate}
-            disabled={isLoading}
-            className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {isLoading ? (
-              <div className="flex items-center justify-center">
-                <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                移行中...
+      {/* 園児追加モーダル */}
+      {showAddChildModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">園児追加</h3>
+                <button
+                  onClick={() => setShowAddChildModal(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            ) : (
-              'データを移行する'
-            )}
-          </button>
-
-          <button
-            onClick={handleSkip}
-            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors"
-          >
-            新しく始める
-          </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">お名前</label>
+                <input
+                  type="text"
+                  value={newChild.name}
+                  onChange={(e) => setNewChild({ ...newChild, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-500/20"
+                  placeholder="山田花子"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">生年月日</label>
+                <input
+                  type="date"
+                  value={newChild.birthdate}
+                  onChange={(e) => setNewChild({ ...newChild, birthdate: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">性別</label>
+                <select
+                  value={newChild.gender}
+                  onChange={(e) => setNewChild({ ...newChild, gender: e.target.value as 'male' | 'female' })}
+                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-500/20"
+                >
+                  <option value="female">女の子</option>
+                  <option value="male">男の子</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">保護者名</label>
+                <input
+                  type="text"
+                  value={newChild.parentName}
+                  onChange={(e) => setNewChild({ ...newChild, parentName: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-500/20"
+                  placeholder="山田一郎"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">メールアドレス</label>
+                <input
+                  type="email"
+                  value={newChild.parentEmail}
+                  onChange={(e) => setNewChild({ ...newChild, parentEmail: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-500/20"
+                  placeholder="yamada@example.com"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200">
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowAddChildModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-2xl font-medium hover:bg-gray-300 transition-all duration-200"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleAddChild}
+                  className="flex-1 bg-gradient-to-r from-pink-500 to-orange-500 text-white py-3 rounded-2xl font-medium hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
+                >
+                  追加
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* チャットモーダル */}
+      {chatChild && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            {/* チャットヘッダー */}
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-pink-400 to-orange-400 rounded-2xl flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">
+                    {DEMO_DATA.children.find(c => c.id === chatChild)?.avatar}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">
+                    {DEMO_DATA.children.find(c => c.id === chatChild)?.name}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    保護者: {DEMO_DATA.children.find(c => c.id === chatChild)?.parentName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setChatChild(null)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* チャットメッセージ */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {chatMessages
+                .filter(msg => msg.childId === chatChild)
+                .map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-xs px-4 py-3 rounded-2xl ${message.sender === 'admin'
+                          ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white'
+                          : 'bg-gray-100 text-gray-900'
+                        }`}
+                    >
+                      <p className="text-sm">{message.message}</p>
+                      <p
+                        className={`text-xs mt-1 ${message.sender === 'admin' ? 'text-pink-100' : 'text-gray-500'
+                          }`}
+                      >
+                        {formatTime(message.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* メッセージ入力 */}
+            <div className="p-6 border-t border-gray-200">
+              <div className="flex space-x-3">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="メッセージを入力..."
+                  className="flex-1 px-4 py-3 bg-gray-100 border-0 rounded-2xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:bg-white transition-all duration-200"
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                />
+                <button
+                  onClick={sendMessage}
+                  className="p-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
-
-// ログイン後の状態管理コンポーネント
-function AuthenticatedApp() {
-  const { children, isDataMigrated } = useRecord();
-  const hasChildren = children.length > 0;
-
-  // LocalStorageに既存データがあり、まだ移行していない場合は移行画面を表示
-  const hasLocalData = localStorage.getItem('children') || localStorage.getItem('recordEvents');
-  if (hasLocalData && !isDataMigrated) {
-    return <DataMigrationPrompt />;
-  }
-
-  // 子供情報が未登録の場合は初回セットアップ画面を表示
-  if (!hasChildren) {
-    return <InitialChildSetup />;
-  }
-
-  // 子供情報がある場合は通常のアプリ画面を表示
-  return <AppContent />;
-}
-
-function MainApp() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="full-screen-container flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-10 w-10 mb-4 text-pink-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <p className="font-medium text-gray-600">読み込み中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return isAuthenticated ? (
-    <RecordProvider>
-      <AuthenticatedApp />
-    </RecordProvider>
-  ) : (
-    <LoginPage />
-  );
-}
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <MainApp />
-      </AuthProvider>
-    </ErrorBoundary>
-  );
-}
+};
 
 export default App;

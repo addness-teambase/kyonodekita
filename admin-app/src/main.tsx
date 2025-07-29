@@ -2,6 +2,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import { AuthProvider } from './context/AuthContext'
+import { RecordProvider } from './context/RecordContext'
 
 // 動的ビューポート高さの設定
 const setVh = () => {
@@ -35,6 +37,10 @@ if (navigator.userAgent.includes('Safari') && navigator.userAgent.includes('iPho
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <AuthProvider>
+      <RecordProvider>
+        <App />
+      </RecordProvider>
+    </AuthProvider>
   </React.StrictMode>,
 )
