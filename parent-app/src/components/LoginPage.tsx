@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Lock, LogIn, AlertCircle, Heart, UserPlus } from 'lucide-react';
+import { User, Lock, LogIn, AlertCircle, Heart } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const [mode, setMode] = useState<'login' | 'signup'>('login');
-    const [success, setSuccess] = useState('');
-    const { login, signUp, isLoading } = useAuth();
+    const { login, isLoading } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        setSuccess('');
 
         if (!username.trim() || !password.trim()) {
             setError('ユーザー名とパスワードを入力してください');
@@ -31,36 +28,16 @@ const LoginPage: React.FC = () => {
         }
 
         try {
-            if (mode === 'login') {
-                console.log('ログイン試行:', { username, password: '***' });
-                const result = await login(username, password);
-                console.log('ログイン結果:', result);
-                if (!result.success) {
-                    setError(result.error || 'ログインに失敗しました');
-                }
-            } else {
-                console.log('サインアップ試行:', { username, password: '***' });
-                const result = await signUp(username, password);
-                console.log('サインアップ結果:', result);
-                if (result.success) {
-                    setSuccess('アカウントを作成しました！ログインしています...');
-                    // SignUpは成功時に自動的にログイン状態になるため、AuthContextがメインアプリに遷移させる
-                } else {
-                    setError(result.error || 'アカウント作成に失敗しました');
-                }
+            console.log('ログイン試行:', { username, password: '***' });
+            const result = await login(username, password);
+            console.log('ログイン結果:', result);
+            if (!result.success) {
+                setError(result.error || 'ログインに失敗しました');
             }
         } catch (error) {
             console.error('認証エラー:', error);
             setError('予期しないエラーが発生しました');
         }
-    };
-
-    const toggleMode = () => {
-        setMode(mode === 'login' ? 'signup' : 'login');
-        setError('');
-        setSuccess('');
-        setUsername('');
-        setPassword('');
     };
 
     return (
@@ -83,13 +60,10 @@ const LoginPage: React.FC = () => {
                 <div className="bg-white rounded-2xl p-6 shadow-md">
                     <div className="text-center mb-6">
                         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                            {mode === 'login' ? 'ログイン' : 'アカウント作成'}
+                            ログイン
                         </h2>
                         <p className="text-sm text-gray-600">
-                            {mode === 'login'
-                                ? 'ユーザー名とパスワードでログイン'
-                                : '新しいユーザー名とパスワードを設定'
-                            }
+                            管理者から発行されたユーザー名とパスワードでログイン
                         </p>
                     </div>
 
@@ -98,15 +72,6 @@ const LoginPage: React.FC = () => {
                             <div className="flex items-center">
                                 <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
                                 <span className="text-sm text-red-700">{error}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {success && (
-                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg" role="alert">
-                            <div className="flex items-center">
-                                <Heart className="h-5 w-5 text-green-500 mr-2" />
-                                <span className="text-sm text-green-700">{success}</span>
                             </div>
                         </div>
                     )}
@@ -148,7 +113,7 @@ const LoginPage: React.FC = () => {
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="パスワードを入力"
                                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
-                                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                    autoComplete="current-password"
                                 />
                             </div>
                             <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
@@ -170,33 +135,17 @@ const LoginPage: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="flex items-center">
-                                        {mode === 'login' ? (
-                                            <>
-                                                <LogIn className="h-5 w-5 mr-2" />
-                                                ログイン
-                                            </>
-                                        ) : (
-                                            <>
-                                                <UserPlus className="h-5 w-5 mr-2" />
-                                                アカウント作成
-                                            </>
-                                        )}
+                                        <LogIn className="h-5 w-5 mr-2" />
+                                        ログイン
                                     </div>
                                 )}
                             </button>
                         </div>
 
                         <div className="text-center pt-4 border-t border-gray-200">
-                            <button
-                                type="button"
-                                onClick={toggleMode}
-                                className="text-sm text-orange-600 hover:text-orange-500 transition-colors font-medium"
-                            >
-                                {mode === 'login'
-                                    ? '初回利用の方はこちら'
-                                    : '既存ユーザーの方はこちら'
-                                }
-                            </button>
+                            <p className="text-xs text-gray-500">
+                                アカウントをお持ちでない場合は、施設の管理者にお問い合わせください
+                            </p>
                         </div>
                     </form>
                 </div>

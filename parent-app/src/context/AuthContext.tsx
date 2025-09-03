@@ -4,13 +4,16 @@ import { supabase } from '../lib/supabase';
 interface User {
     id: string;
     username: string;
+    facility?: {
+        name: string;
+        adminName: string;
+    };
 }
 
 interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
     login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-    signUp: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
     isLoading: boolean;
 }
@@ -48,31 +51,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
                     // ユーザーデータの基本的なバリデーション
                     if (userData && userData.id && userData.username) {
-                        try {
-                            // データベースからユーザー情報を再確認
-                            const { data: dbUser, error } = await supabase
-                                .from('users')
-                                .select('id, username')
-                                .eq('id', userData.id)
-                                .single();
+                        // データベースからユーザー情報を再確認
+                        const { data: dbUser, error } = await supabase
+                            .from('users')
+                            .select('id, username')
+                            .eq('id', userData.id)
+                            .single();
 
-                            if (dbUser && !error) {
-                                console.log('ユーザー情報を復元しました:', dbUser.username);
-                                setUser(dbUser);
-                            } else {
-                                console.log('データベースでユーザーが見つかりません。ローカルデータを削除します。');
-                                localStorage.removeItem('kyou-no-dekita-user');
-                            }
-                        } catch (dbError) {
-                            console.log('データベース接続エラー。ローカルデータを削除します:', dbError);
+                        if (dbUser && !error) {
+                            console.log('ユーザー情報を復元しました:', dbUser.username);
+                            setUser(dbUser);
+                        } else {
+                            console.warn('DBでユーザーを再確認できませんでした。ローカルの情報を削除します。');
                             localStorage.removeItem('kyou-no-dekita-user');
                         }
                     } else {
                         console.log('無効なユーザーデータ。ローカルデータを削除します。');
                         localStorage.removeItem('kyou-no-dekita-user');
                     }
-                } else {
-                    console.log('ローカルストレージにユーザー情報がありません。');
                 }
             } catch (error) {
                 console.error('ユーザー読み込みエラー:', error);
@@ -85,63 +81,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         loadUserFromStorage();
     }, []);
 
-    const signUp = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
-        try {
-            setIsLoading(true);
-            console.log('サインアップ開始:', { username, passwordLength: password.length });
 
-            // ユーザー名の重複チェック
-            const { data: existingUser, error: checkError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('username', username)
-                .single();
-
-            if (existingUser) {
-                console.log('ユーザー名重複:', username);
-                return { success: false, error: 'このユーザー名は既に使用されています' };
-            }
-
-            // パスワードをハッシュ化
-            const hashedPassword = hashPassword(password);
-
-            // ユーザーを作成
-            const { data: newUser, error } = await supabase
-                .from('users')
-                .insert({
-                    username: username,
-                    password: hashedPassword
-                })
-                .select('id, username')
-                .single();
-
-            console.log('サインアップ結果:', { newUser, error });
-
-            if (error) {
-                console.error('ユーザー作成エラー:', error);
-                return { success: false, error: '登録に失敗しました' };
-            }
-
-            if (newUser) {
-                console.log('ユーザー作成成功:', newUser.id);
-                setUser(newUser);
-                localStorage.setItem('kyou-no-dekita-user', JSON.stringify(newUser));
-                return { success: true };
-            }
-
-            return { success: false, error: '登録に失敗しました' };
-        } catch (error) {
-            console.error('登録エラー:', error);
-            return { success: false, error: '登録に失敗しました' };
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+        setIsLoading(true);
         try {
-            setIsLoading(true);
-            console.log('ログイン開始:', { username, passwordLength: password.length });
+            console.log('ログイン開始:', { username });
 
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
@@ -154,20 +99,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 .eq('password', hashedPassword)
                 .single();
 
-            console.log('ログイン結果:', { userData, error });
-
             if (error || !userData) {
-                console.error('ログインエラー:', error);
-                return { success: false, error: 'ユーザー名またはパスワードが間違っています' };
+                console.warn('Supabaseログインエラー:', error?.message || 'ユーザーデータが見つかりません');
+                return {
+                    success: false,
+                    error: 'ユーザー名またはパスワードが間違っています'
+                };
             }
 
-            console.log('ログイン成功:', userData.id);
+            console.log('Supabaseログイン成功:', userData.id);
             setUser(userData);
             localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userData));
             return { success: true };
         } catch (error) {
-            console.error('ログインエラー:', error);
-            return { success: false, error: 'ログインに失敗しました' };
+            console.error('予期しないログインエラー:', error);
+            return {
+                success: false,
+                error: 'システムエラーが発生しました。'
+            };
         } finally {
             setIsLoading(false);
         }
@@ -192,7 +141,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             user,
             isAuthenticated,
             login,
-            signUp,
             logout,
             isLoading
         }}>

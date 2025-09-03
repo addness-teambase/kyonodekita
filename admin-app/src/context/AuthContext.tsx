@@ -1,24 +1,27 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface Facility {
-    id: string;
     name: string;
     adminName: string;
-    createdAt: string;
+    address?: string;
+    phone?: string;
+    email?: string;
 }
 
 interface User {
     id: string;
-    facilityId: string;
+    username: string;
     facility: Facility;
 }
 
 interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
-    login: (facilityName: string, adminName: string, password: string) => Promise<{ success: boolean; error?: string }>;
-    signUp: (facilityName: string, adminName: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+    signUp: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
+    updateUserInfo: (facilityInfo: Partial<Facility>) => Promise<void>;
     isLoading: boolean;
 }
 
@@ -38,18 +41,7 @@ interface AuthProviderProps {
 
 // 簡単なパスワードハッシュ関数
 const hashPassword = (password: string): string => {
-    return btoa(password + 'kyou-no-dekita-admin-salt');
-};
-
-// ローカルストレージのキー
-const STORAGE_KEYS = {
-    facilities: 'kyou-no-dekita-facilities',
-    currentUser: 'kyou-no-dekita-current-admin'
-};
-
-// UUIDのような一意IDを生成
-const generateId = (): string => {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    return btoa(password + 'kyou-no-dekita-salt'); // parent-appとsaltを合わせる
 };
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
@@ -58,26 +50,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // ローカルストレージからユーザー情報を読み込み
     useEffect(() => {
-        const loadUserFromStorage = () => {
+        const loadUserFromStorage = async () => {
             try {
-                const storedUser = localStorage.getItem(STORAGE_KEYS.currentUser);
+                const storedUser = localStorage.getItem('kyou-no-dekita-user'); // parent-appとキーを合わせる
                 if (storedUser) {
                     const userData = JSON.parse(storedUser);
 
-                    // ユーザーデータの基本的なバリデーション
-                    if (userData && userData.id && userData.facilityId && userData.facility) {
-                        console.log('管理者情報を復元しました:', userData.facility.name);
-                        setUser(userData);
+                    if (userData && userData.id && userData.username) {
+                        // データベースからユーザー情報を再確認
+                        const { data: dbUser, error } = await supabase
+                            .from('users')
+                            .select('id, username')
+                            .eq('id', userData.id)
+                            .single();
+
+                        if (dbUser && !error) {
+                            // データベースから詳細な施設情報を取得
+                            const { data: userDetails } = await supabase
+                                .from('users')
+                                .select('facility_name, display_name, facility_address, facility_phone, facility_email')
+                                .eq('id', dbUser.id)
+                                .single();
+
+                            // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
+                            const userWithFacility: User = {
+                                id: dbUser.id,
+                                username: dbUser.username,
+                                facility: {
+                                    name: userDetails?.facility_name || 'きょうのできた',
+                                    adminName: userDetails?.display_name || dbUser.username,
+                                    address: userDetails?.facility_address || undefined,
+                                    phone: userDetails?.facility_phone || undefined,
+                                    email: userDetails?.facility_email || undefined
+                                }
+                            };
+                            console.log('ユーザー情報を復元しました:', dbUser.username);
+                            setUser(userWithFacility);
+                        } else {
+                            console.warn('DBでユーザーを再確認できませんでした。ローカルの情報を削除します。');
+                            localStorage.removeItem('kyou-no-dekita-user');
+                        }
                     } else {
-                        console.log('無効な管理者データ。ローカルデータを削除します。');
-                        localStorage.removeItem(STORAGE_KEYS.currentUser);
+                        console.log('無効なユーザーデータ。ローカルデータを削除します。');
+                        localStorage.removeItem('kyou-no-dekita-user');
                     }
-                } else {
-                    console.log('ローカルストレージに管理者情報がありません。');
                 }
             } catch (error) {
-                console.error('管理者読み込みエラー:', error);
-                localStorage.removeItem(STORAGE_KEYS.currentUser);
+                console.error('ユーザー読み込みエラー:', error);
+                localStorage.removeItem('kyou-no-dekita-user');
             } finally {
                 setIsLoading(false);
             }
@@ -86,141 +106,147 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         loadUserFromStorage();
     }, []);
 
-    // ローカルストレージから事業所一覧を取得
-    const getFacilitiesFromStorage = (): Array<{ id: string; name: string; adminName: string; password: string; createdAt: string }> => {
+    const signUp = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+        setIsLoading(true);
         try {
-            const facilities = localStorage.getItem(STORAGE_KEYS.facilities);
-            return facilities ? JSON.parse(facilities) : [];
-        } catch (error) {
-            console.error('事業所一覧の読み込みエラー:', error);
-            return [];
-        }
-    };
+            console.log('サインアップ開始:', { username });
 
-    // ローカルストレージに事業所一覧を保存
-    const saveFacilitiesToStorage = (facilities: Array<{ id: string; name: string; adminName: string; password: string; createdAt: string }>) => {
-        try {
-            localStorage.setItem(STORAGE_KEYS.facilities, JSON.stringify(facilities));
-        } catch (error) {
-            console.error('事業所一覧の保存エラー:', error);
-        }
-    };
+            // ユーザー名の重複チェック
+            const { data: existingUser, error: checkError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
 
-    const signUp = async (facilityName: string, adminName: string, password: string): Promise<{ success: boolean; error?: string }> => {
-        try {
-            setIsLoading(true);
-            console.log('事業所登録開始:', { facilityName, adminName, passwordLength: password.length });
-
-            if (!facilityName.trim()) {
-                return { success: false, error: '事業所名を入力してください' };
+            if (checkError && checkError.code !== 'PGRST116') { // PGRST116は結果が0件だった場合のエラー
+                console.error('ユーザー名重複チェックエラー:', checkError);
+                return { success: false, error: 'データベースエラーが発生しました。' };
             }
 
-            if (!adminName.trim()) {
-                return { success: false, error: '管理者名を入力してください' };
-            }
-
-            if (password.length < 6) {
-                return { success: false, error: 'パスワードは6文字以上で入力してください' };
-            }
-
-            const facilities = getFacilitiesFromStorage();
-
-            // 事業所名の重複チェック
-            const existingFacility = facilities.find(f => f.name.toLowerCase() === facilityName.toLowerCase());
-            if (existingFacility) {
-                console.log('事業所名重複:', facilityName);
-                return { success: false, error: 'この事業所名は既に使用されています' };
+            if (existingUser) {
+                console.log('ユーザー名重複:', username);
+                return { success: false, error: 'このユーザー名は既に使用されています' };
             }
 
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // 新しい事業所を作成
-            const newFacility = {
-                id: generateId(),
-                name: facilityName,
-                adminName: adminName,
-                password: hashedPassword,
-                createdAt: new Date().toISOString()
-            };
+            // ユーザーを作成
+            const { data: newUser, error } = await supabase
+                .from('users')
+                .insert({
+                    username: username,
+                    password: hashedPassword
+                })
+                .select('id, username')
+                .single();
 
-            // 事業所一覧に追加
-            const updatedFacilities = [...facilities, newFacility];
-            saveFacilitiesToStorage(updatedFacilities);
+            if (error) {
+                console.error('Supabaseサインアップエラー:', error);
+                return { success: false, error: 'アカウント作成に失敗しました。' };
+            }
 
-            // 現在のユーザーとして設定
-            const userData: User = {
-                id: generateId(),
-                facilityId: newFacility.id,
-                facility: {
-                    id: newFacility.id,
-                    name: newFacility.name,
-                    adminName: newFacility.adminName,
-                    createdAt: newFacility.createdAt
-                }
-            };
+            if (newUser) {
+                // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
+                const userWithFacility: User = {
+                    id: newUser.id,
+                    username: newUser.username,
+                    facility: {
+                        name: 'きょうのできた',
+                        adminName: newUser.username // ユーザー名を管理者名として使用
+                    }
+                };
+                console.log('ユーザー作成成功:', newUser.id);
+                setUser(userWithFacility);
+                localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userWithFacility));
+                return { success: true };
+            }
 
-            setUser(userData);
-            localStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(userData));
-
-            console.log('事業所登録成功:', newFacility.id);
-            return { success: true };
+            return { success: false, error: '登録に失敗しました' };
         } catch (error) {
             console.error('登録エラー:', error);
-            return { success: false, error: '登録に失敗しました' };
+            return { success: false, error: '予期しないエラーが発生しました。' };
         } finally {
             setIsLoading(false);
         }
     };
 
-    const login = async (facilityName: string, adminName: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+        setIsLoading(true);
         try {
-            setIsLoading(true);
-            console.log('ログイン開始:', { facilityName, adminName, passwordLength: password.length });
-
-            if (!facilityName.trim() || !adminName.trim() || !password.trim()) {
-                return { success: false, error: '全ての項目を入力してください' };
-            }
-
-            const facilities = getFacilitiesFromStorage();
+            console.log('ログイン開始:', { username });
 
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // 事業所を認証
-            const facilityData = facilities.find(f =>
-                f.name.toLowerCase() === facilityName.toLowerCase() &&
-                f.adminName === adminName &&
-                f.password === hashedPassword
-            );
+            // ユーザーを認証
+            const { data: userData, error } = await supabase
+                .from('users')
+                .select('id, username')
+                .eq('username', username)
+                .eq('password', hashedPassword)
+                .single();
 
-            if (!facilityData) {
-                console.error('ログインエラー: 事業所情報が見つかりません');
-                return { success: false, error: '事業所名、管理者名、またはパスワードが間違っています' };
+            if (error || !userData) {
+                console.warn('Supabaseログインエラー:', error?.message || 'ユーザーデータが見つかりません');
+                return {
+                    success: false,
+                    error: 'ユーザー名またはパスワードが間違っています'
+                };
             }
 
-            // 現在のユーザーとして設定
-            const userData: User = {
-                id: generateId(),
-                facilityId: facilityData.id,
+            // データベースから詳細な施設情報を取得
+            const { data: userDetails } = await supabase
+                .from('users')
+                .select('facility_name, display_name, facility_address, facility_phone, facility_email')
+                .eq('id', userData.id)
+                .single();
+
+            // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
+            const userWithFacility: User = {
+                id: userData.id,
+                username: userData.username,
                 facility: {
-                    id: facilityData.id,
-                    name: facilityData.name,
-                    adminName: facilityData.adminName,
-                    createdAt: facilityData.createdAt
+                    name: userDetails?.facility_name || 'きょうのできた',
+                    adminName: userDetails?.display_name || userData.username,
+                    address: userDetails?.facility_address || undefined,
+                    phone: userDetails?.facility_phone || undefined,
+                    email: userDetails?.facility_email || undefined
+                }
+            };
+            console.log('Supabaseログイン成功:', userData.id);
+            setUser(userWithFacility);
+            localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userWithFacility));
+            return { success: true };
+        } catch (error) {
+            console.error('予期しないログインエラー:', error);
+            return {
+                success: false,
+                error: 'システムエラーが発生しました。'
+            };
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const updateUserInfo = async (facilityInfo: Partial<Facility>): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const updatedUser: User = {
+                ...user,
+                facility: {
+                    ...user.facility,
+                    ...facilityInfo
                 }
             };
 
-            setUser(userData);
-            localStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(userData));
-
-            console.log('ログイン成功:', facilityData.id);
-            return { success: true };
+            setUser(updatedUser);
+            localStorage.setItem('kyou-no-dekita-user', JSON.stringify(updatedUser));
+            console.log('ユーザー情報を更新しました:', facilityInfo);
         } catch (error) {
-            console.error('ログインエラー:', error);
-            return { success: false, error: 'ログインに失敗しました' };
-        } finally {
-            setIsLoading(false);
+            console.error('ユーザー情報更新エラー:', error);
+            throw error;
         }
     };
 
@@ -228,7 +254,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             setIsLoading(true);
             setUser(null);
-            localStorage.removeItem(STORAGE_KEYS.currentUser);
+            localStorage.removeItem('kyou-no-dekita-user');
         } catch (error) {
             console.error('ログアウトエラー:', error);
         } finally {
@@ -245,9 +271,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             login,
             signUp,
             logout,
+            updateUserInfo,
             isLoading
         }}>
             {children}
         </AuthContext.Provider>
     );
-}; 
+};

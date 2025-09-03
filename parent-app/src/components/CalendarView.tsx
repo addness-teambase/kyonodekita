@@ -243,6 +243,60 @@ const CalendarView: React.FC = () => {
                     )}
                 </div>
 
+                {/* 出席記録セクション */}
+                <div className="mb-4">
+                    <div className="py-2 border-b border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 flex items-center">
+                            📝 施設からの記録
+                        </h4>
+                    </div>
+                    <div className="mt-2">
+                        {/* TODO: 管理者からの出席記録を表示 */}
+                        {dayEvents.filter(event => event.type === 'attendance_record').length === 0 ? (
+                            <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
+                                施設からの記録はありません
+                            </p>
+                        ) : (
+                            <div className="space-y-3">
+                                {dayEvents
+                                    .filter(event => event.type === 'attendance_record' && event.attendanceRecord)
+                                    .map(event => (
+                                        <div key={event.id} className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-400 transition-all duration-200 hover:shadow-sm">
+                                            <div className="mb-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h5 className="text-sm font-medium text-blue-700">施設での記録</h5>
+                                                    <span className="text-xs text-gray-500">
+                                                        記録者: {event.attendanceRecord?.recordedBy}
+                                                    </span>
+                                                </div>
+                                                {event.attendanceRecord?.usageStartTime && event.attendanceRecord?.usageEndTime && (
+                                                    <div className="flex items-center gap-2 text-xs text-blue-600 mb-2">
+                                                        <Clock size={12} />
+                                                        {event.attendanceRecord.usageStartTime} ～ {event.attendanceRecord.usageEndTime}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div>
+                                                    <h6 className="text-xs font-medium text-gray-700 mb-1">本人の様子</h6>
+                                                    <p className="text-sm text-gray-700 leading-relaxed bg-white p-2 rounded border">
+                                                        {event.attendanceRecord?.childCondition}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h6 className="text-xs font-medium text-gray-700 mb-1">活動内容</h6>
+                                                    <p className="text-sm text-gray-700 leading-relaxed bg-white p-2 rounded border">
+                                                        {event.attendanceRecord?.activities}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 {/* 記録一覧（トグル可能） */}
                 <div>
                     <div
@@ -482,7 +536,8 @@ const CalendarView: React.FC = () => {
                         const dayRecords = getRecordsForDate(day);
                         const dayEvents = getCalendarEventsForDate(day);
                         const hasRecords = dayRecords.length > 0;
-                        const hasEvents = dayEvents.length > 0;
+                        const hasEvents = dayEvents.filter(event => event.type !== 'attendance_record').length > 0;
+                        const hasAttendanceRecords = dayEvents.filter(event => event.type === 'attendance_record').length > 0;
 
                         // カテゴリー別のレコード有無
                         const hasAchievement = dayRecords.some(r => r.category === 'achievement');
@@ -517,6 +572,13 @@ const CalendarView: React.FC = () => {
                                 {hasEvents && (
                                     <div className="absolute top-0 right-0">
                                         <div className="w-2 h-2 bg-orange-400 rounded-full" />
+                                    </div>
+                                )}
+
+                                {/* 出席記録のインジケーター */}
+                                {hasAttendanceRecords && (
+                                    <div className="absolute top-0 left-0">
+                                        <div className="w-2 h-2 bg-blue-400 rounded-full" />
                                     </div>
                                 )}
                             </button>

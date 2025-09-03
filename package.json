@@ -11,6 +11,7 @@
         "install:all": "npm install && cd parent-app && npm install && cd ../admin-app && npm install"
     },
     "devDependencies": {
+        "@anthropic-ai/claude-code": "^1.0.67",
         "concurrently": "^8.2.2"
     }
 }

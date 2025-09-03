@@ -119,6 +119,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const [childrenList, setChildrenList] = useState<ChildInfo[]>([]);
     const [activeChildId, setActiveChildId] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState(startOfToday());
+    const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
     const [activeCategory, setActiveCategory] = useState<RecordCategory>('achievement');
     const [isAnimating, setIsAnimating] = useState(false);
     const [cachedContent, setCachedContent] = useState<CachedContent>({});
@@ -142,12 +143,13 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (!user) return;
 
         try {
-            // 子供データの読み込み
+            // 管理者が登録した子供データの読み込み（現在は一時的にuser_idベースで取得）
+            // TODO: parent_user_idフィールドが実装されたらそれを使用する
             const { data: children, error: childrenError } = await supabase
                 .from('children')
                 .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true })
+                .limit(50); // 一時的に全ての子供データから取得（実際の実装では関連付けが必要）
 
             if (childrenError) {
                 console.error('子供データの読み込みエラー:', childrenError);
@@ -238,8 +240,42 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 setGrowthRecords(growthList);
             }
 
+            // 出席記録（施設からの記録）の読み込み
+            // activeChildIdがある場合のみ取得
+            if (activeChildId || (childrenList.length > 0)) {
+                const targetChildId = activeChildId || childrenList[0]?.id;
+                if (targetChildId) {
+                    const { data: attendanceData, error: attendanceError } = await supabase
+                        .from('attendance_schedules')
+                        .select('*')
+                        .eq('child_id', targetChildId)
+                        .order('date', { ascending: false })
+                        .limit(30); // 最新30件
+
+                    if (attendanceError) {
+                        console.error('出席記録データの読み込みエラー:', attendanceError);
+                    } else if (attendanceData) {
+                        console.log('✅ 出席記録を読み込みました:', attendanceData.length, '件');
+                        setAttendanceRecords(attendanceData);
+                    }
+                }
+            }
+
         } catch (error) {
-            console.error('Supabaseデータの読み込みエラー:', error);
+            console.log('Supabaseデータの読み込みエラー（オフラインモード）:', error);
+            // オフラインモードでもアプリを正常に動作させる
+        }
+
+        // ローカルストレージからも出席記録を読み込む（デモ用）
+        try {
+            const localAttendanceRecords = localStorage.getItem('admin-attendance-records');
+            if (localAttendanceRecords) {
+                const localRecords = JSON.parse(localAttendanceRecords);
+                console.log('✅ ローカル出席記録を読み込みました:', localRecords.length, '件');
+                setAttendanceRecords(prevRecords => [...prevRecords, ...localRecords]);
+            }
+        } catch (localError) {
+            console.log('ローカル出席記録読み込みエラー:', localError);
         }
     };
 
@@ -354,6 +390,25 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         return time.substring(0, 5); // HH:MM:SS -> HH:MM
     };
 
+    // 出席記録のnotesフィールドを解析して内容を分割する
+    const parseAttendanceNotes = (notes: string | null): { childCondition: string; activities: string } => {
+        if (!notes) return { childCondition: '', activities: '' };
+
+        const parts = notes.split('\n\n');
+        let childCondition = '';
+        let activities = '';
+
+        for (const part of parts) {
+            if (part.startsWith('【本人の様子】')) {
+                childCondition = part.replace('【本人の様子】\n', '').trim();
+            } else if (part.startsWith('【活動内容】')) {
+                activities = part.replace('【活動内容】\n', '').trim();
+            }
+        }
+
+        return { childCondition, activities };
+    };
+
     const addCalendarEvent = async (date: Date, title: string, time?: string, description?: string): Promise<void> => {
         if (!user || !activeChildId) return;
 
@@ -417,13 +472,56 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
     const getCalendarEventsForDate = (date: Date): CalendarEvent[] => {
         const dateStr = format(date, 'yyyy-MM-dd');
+
+        // 通常のカレンダーイベント
         const events = calendarEvents.filter(event =>
             event.date === dateStr &&
             event.childId === activeChildId
         );
 
+        // 施設からの出席記録を追加（子供の名前でマッチング）
+        const currentChild = activeChildId ? childrenList.find(c => c.id === activeChildId) : null;
+        const attendanceEventsForDate = attendanceRecords
+            .filter(record => {
+                // 日付でフィルター
+                if (record.date !== dateStr) return false;
+
+                // 子供の名前でマッチング（ローカルモード対応）
+                if (currentChild) {
+                    // 記録に子供名が含まれているか確認（適当なロジック）
+                    const recordHasChildName = record.notes && record.notes.includes(currentChild.name);
+                    const isForCurrentChild = recordHasChildName || !record.child_id; // child_idがない場合は表示
+                    return isForCurrentChild;
+                }
+
+                return true; // 子供が選択されていない場合は全て表示
+            })
+            .map(record => ({
+                id: `attendance-${record.id}`,
+                date: record.date,
+                title: '施設での記録',
+                time: record.actual_arrival_time ? stripSeconds(record.actual_arrival_time) : null,
+                description: null,
+                childId: record.child_id,
+                type: 'attendance_record' as const,
+                attendanceRecord: {
+                    id: record.id,
+                    childId: record.child_id,
+                    date: record.date,
+                    usageStartTime: record.actual_arrival_time,
+                    usageEndTime: record.actual_departure_time,
+                    childCondition: parseAttendanceNotes(record.notes).childCondition,
+                    activities: parseAttendanceNotes(record.notes).activities,
+                    recordedBy: record.created_by || '施設スタッフ',
+                    recordedAt: record.created_at
+                }
+            }));
+
+        // 全てのイベントを結合
+        const allEvents = [...events, ...attendanceEventsForDate];
+
         // 時間順でソート（時間がない場合は最後に配置）
-        return events.sort((a, b) => {
+        return allEvents.sort((a, b) => {
             if (!a.time && !b.time) return 0;
             if (!a.time) return 1;
             if (!b.time) return -1;
@@ -577,78 +675,58 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     };
 
     const addChild = async (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<string> => {
-        if (!user) throw new Error('ユーザーが認証されていません');
-
-        try {
-            const { data, error } = await supabase
-                .from('children')
-                .insert({
-                    user_id: user.id,
-                    name,
-                    age,
-                    birthdate,
-                    gender,
-                    avatar_image: avatarImage
-                })
-                .select()
-                .single();
-
-            if (error) {
-                console.error('子供追加エラー:', error);
-                throw error;
-            }
-
-            const newChild: ChildInfo = {
-                id: data.id,
-                name: data.name,
-                age: data.age,
-                birthdate: data.birthdate,
-                gender: data.gender,
-                avatarImage: data.avatar_image
-            };
-
-            const updatedChildren = [...childrenList, newChild];
-            setChildrenList(updatedChildren);
-
-            // 最初の子供の場合はアクティブに設定
-            if (childrenList.length === 0) {
-                setActiveChildId(newChild.id);
-            }
-
-            return newChild.id;
-        } catch (error) {
-            console.error('子供追加エラー:', error);
-            throw error;
-        }
+        // 保護者による子供登録は無効化されました
+        // 管理者が登録した子供情報のみ使用可能です
+        throw new Error('子供の登録は管理者によってのみ可能です。施設にお問い合わせください。');
     };
 
     const updateChildInfo = async (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<void> => {
         if (!user) return;
 
         try {
+            console.log('子供情報更新開始:', { id, name, age, birthdate, gender, hasAvatar: !!avatarImage });
+
+            // 保護者は子供の基本情報を編集可能
+            const updateData: any = {
+                name: name.trim(),
+                age: age,
+                birthdate: birthdate || null,
+                gender: gender || 'female',
+                avatar_image: avatarImage || null,
+                updated_at: new Date().toISOString()
+            };
+
             const { error } = await supabase
                 .from('children')
-                .update({
-                    name,
-                    age,
-                    birthdate,
-                    gender,
-                    avatar_image: avatarImage,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', id);
+                .update(updateData)
+                .eq('id', id)
+                .eq('user_id', user.id); // 自分の子供のみ編集可能
 
             if (error) {
                 console.error('子供情報更新エラー:', error);
-                return;
+                throw error;
             }
 
+            console.log('データベース更新成功');
+
+            // ローカル状態も更新
             const updatedChildren = childrenList.map(child =>
-                child.id === id ? { ...child, name, age, birthdate, gender, avatarImage } : child
+                child.id === id ? {
+                    ...child,
+                    name: name.trim(),
+                    age: age,
+                    birthdate: birthdate || '',
+                    gender: gender || 'female',
+                    avatarImage: avatarImage || ''
+                } : child
             );
             setChildrenList(updatedChildren);
+            saveToStorage(STORAGE_KEYS.children, updatedChildren);
+
+            console.log('子供情報更新完了');
         } catch (error) {
             console.error('子供情報更新エラー:', error);
+            throw error;
         }
     };
 

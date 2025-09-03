@@ -4,22 +4,13 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseKey) {
-    console.error('Supabase configuration error:', {
-        hasUrl: !!supabaseUrl,
-        hasKey: !!supabaseKey,
-        url: supabaseUrl ? 'set' : 'missing',
-        key: supabaseKey ? 'set' : 'missing'
-    })
-
-    // 本番環境での一時的なフォールバック
-    if (typeof window !== 'undefined') {
-        window.location.href = '/error.html'
-    }
-
-    throw new Error('Supabase URL and Key are required. Please check your environment variables.')
+    throw new Error('Supabaseの環境変数 (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY) が設定されていません。');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('Supabase client initialized successfully.');
+
+export { supabase };
 
 // 型定義
 export interface Database {
@@ -119,6 +110,49 @@ export interface Database {
                     content?: string
                 }
             }
+            attendance_schedules: {
+                Row: {
+                    id: string
+                    child_id: string
+                    date: string
+                    scheduled_arrival_time: string | null
+                    scheduled_departure_time: string | null
+                    actual_arrival_time: string | null
+                    actual_departure_time: string | null
+                    attendance_status: 'scheduled' | 'present' | 'absent' | 'late' | 'early_departure' | 'sick'
+                    notes: string | null
+                    created_by: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    child_id: string
+                    date: string
+                    scheduled_arrival_time?: string | null
+                    scheduled_departure_time?: string | null
+                    actual_arrival_time?: string | null
+                    actual_departure_time?: string | null
+                    attendance_status?: 'scheduled' | 'present' | 'absent' | 'late' | 'early_departure' | 'sick'
+                    notes?: string | null
+                    created_by?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    child_id?: string
+                    date?: string
+                    scheduled_arrival_time?: string | null
+                    scheduled_departure_time?: string | null
+                    actual_arrival_time?: string | null
+                    actual_departure_time?: string | null
+                    attendance_status?: 'scheduled' | 'present' | 'absent' | 'late' | 'early_departure' | 'sick'
+                    notes?: string | null
+                    created_by?: string | null
+                    updated_at?: string
+                }
+            }
         }
     }
 }
@@ -143,11 +177,13 @@ export const directChatApi = {
         }
 
         // 会話が存在しない場合は新しく作成
+        // facility_id をデフォルト値で設定（実際の実装では適切な facility_id を取得する必要があります）
         const { data: newConversation, error: createError } = await supabase
             .from('direct_chat_conversations')
             .insert({
                 child_id: childId,
                 parent_user_id: parentUserId,
+                facility_id: '00000000-0000-0000-0000-000000000001', // 仮の facility_id
                 status: 'active'
             })
             .select()

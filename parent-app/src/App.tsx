@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import RecordButton from './components/RecordButton';
 import GrowthRecords from './components/GrowthRecords';
 import { compressImage } from './utils/imageUtils';
+import { directChatApi } from './lib/supabase';
 
 import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
@@ -373,6 +374,108 @@ function AppContent() {
         top: chatScrollContainerRef.current.scrollHeight,
         behavior: 'smooth'
       });
+    }
+  };
+
+  // 直接チャット開始
+  const handleStartDirectChat = async () => {
+    if (!user || !activeChildId) return;
+
+    try {
+      // 会話を取得または作成
+      const { data: conversation, error } = await directChatApi.getOrCreateConversation(
+        activeChildId,
+        user.id
+      );
+
+      if (error || !conversation) {
+        console.error('会話の作成に失敗しました:', error);
+        alert('チャットの開始に失敗しました。');
+        return;
+      }
+
+      // 既存のメッセージを取得
+      const { data: messages, error: msgError } = await directChatApi.getMessages(conversation.id);
+
+      if (msgError) {
+        console.error('メッセージの取得に失敗しました:', msgError);
+      }
+
+      // 新しいセッションを作成
+      const newSession: DirectChatSession = {
+        id: conversation.id,
+        childId: activeChildId,
+        participantType: 'admin',
+        participantName: '園の先生',
+        messages: (messages || []).map(msg => ({
+          id: msg.id,
+          childId: activeChildId,
+          sender: msg.sender_type === 'parent' ? 'parent' : 'admin',
+          senderName: msg.sender_type === 'parent' ? '保護者' : '園の先生',
+          content: msg.content,
+          timestamp: msg.created_at
+        })),
+        lastMessageTime: conversation.last_message_at || new Date().toISOString()
+      };
+
+      // セッションリストに追加（重複を避ける）
+      setDirectChatSessions(prev => {
+        const exists = prev.find(s => s.id === newSession.id);
+        if (exists) {
+          // 既存のセッションを更新
+          return prev.map(s => s.id === newSession.id ? newSession : s);
+        }
+        return [...prev, newSession];
+      });
+
+      setCurrentDirectSession(conversation.id);
+    } catch (error) {
+      console.error('チャット開始エラー:', error);
+      alert('チャットの開始に失敗しました。');
+    }
+  };
+
+  // 直接メッセージ送信
+  const handleSendDirectMessage = async () => {
+    if (!directMessage.trim() || !currentDirectSession || !user || !activeChildId) return;
+
+    try {
+      // メッセージを送信
+      const { data: savedMessage, error } = await directChatApi.sendMessage(
+        currentDirectSession,
+        user.id,
+        'parent',
+        directMessage.trim()
+      );
+
+      if (error || !savedMessage) {
+        console.error('メッセージ送信エラー:', error);
+        alert('メッセージの送信に失敗しました。');
+        return;
+      }
+
+      // 新しいメッセージをローカルのセッションに追加
+      const newMessage: DirectChatMessage = {
+        id: savedMessage.id,
+        childId: activeChildId,
+        sender: 'parent',
+        senderName: '保護者',
+        content: directMessage.trim(),
+        timestamp: savedMessage.created_at
+      };
+
+      setDirectChatSessions(prev =>
+        prev.map(session =>
+          session.id === currentDirectSession
+            ? { ...session, messages: [...session.messages, newMessage], lastMessageTime: savedMessage.created_at }
+            : session
+        )
+      );
+
+      setDirectMessage('');
+    } catch (error) {
+      console.error('メッセージ送信エラー:', error);
+      alert('メッセージの送信に失敗しました。');
     }
   };
 
@@ -925,7 +1028,7 @@ ${userMessage}
                         : 'bg-amber-50 border border-amber-200 hover:bg-amber-100'
                         }`}
                     >
-                                              <div className="text-xs text-gray-600 mb-1">気になる</div>
+                      <div className="text-xs text-gray-600 mb-1">気になる</div>
                       <div className="text-lg font-bold text-amber-600">
                         {todaysFilteredRecords.filter(r => r.category === 'failure').length}
                       </div>
@@ -1044,25 +1147,25 @@ ${userMessage}
                 </div>
               )}
 
-              {/* 子供情報がなければ設定を促す - スマホ対応 */}
+              {/* 子供情報がなければ管理者に連絡を促す - スマホ対応 */}
               {!childInfo && (
-                <div className="mt-6 bg-gradient-to-r from-blue-50 to-purple-50 p-5 rounded-xl border border-blue-100">
+                <div className="mt-6 bg-gradient-to-r from-orange-50 to-red-50 p-5 rounded-xl border border-orange-100">
                   <div className="flex items-center mb-3">
-                    <span className="text-2xl mr-3">👶</span>
-                    <p className="text-base text-blue-700 font-medium">お子さまの情報を登録しませんか？</p>
+                    <span className="text-2xl mr-3">📞</span>
+                    <p className="text-base text-orange-700 font-medium">お子さまの情報が見つかりません</p>
                   </div>
-                  <p className="text-sm text-blue-600 mb-4">記録がより便利で楽しくなります！</p>
-                  <button
-                    onClick={() => {
-                      setEditChildId(null);
-                      setIsChildSettingsOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 bg-blue-500 text-white px-6 py-3 rounded-xl text-base font-medium shadow-sm min-h-12 focus:outline-none"
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                  >
-                    <Settings size={18} />
-                    <span>お子さまを登録する</span>
-                  </button>
+                  <p className="text-sm text-orange-600 mb-4">
+                    管理者がお子さまの情報を登録する必要があります。<br />
+                    施設の管理者にお問い合わせください。
+                  </p>
+                  <div className="text-xs text-orange-500 bg-orange-100 p-3 rounded-lg">
+                    <p><strong>💡 利用可能になると：</strong></p>
+                    <ul className="mt-1 space-y-1 list-disc list-inside">
+                      <li>お子さまの成長記録を作成できます</li>
+                      <li>写真を追加・変更できます</li>
+                      <li>AI先生に相談できます</li>
+                    </ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -1076,22 +1179,20 @@ ${userMessage}
               <div className="flex bg-gray-100 rounded-xl p-1">
                 <button
                   onClick={() => setChatType('ai')}
-                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    chatType === 'ai' 
-                      ? 'bg-white text-purple-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${chatType === 'ai'
+                    ? 'bg-white text-purple-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                    }`}
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
                   AI先生に相談
                 </button>
                 <button
                   onClick={() => setChatType('direct')}
-                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    chatType === 'direct' 
-                      ? 'bg-white text-orange-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${chatType === 'direct'
+                    ? 'bg-white text-orange-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                    }`}
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
                   園の先生と連絡
@@ -1099,10 +1200,38 @@ ${userMessage}
               </div>
             </div>
 
+            {/* チャット切り替えタブ */}
+            <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-1 mb-4">
+              <div className="flex">
+                <button
+                  onClick={() => setChatType('ai')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl transition-colors ${chatType === 'ai'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="font-medium text-sm">AI先生に相談</span>
+                </button>
+                <button
+                  onClick={() => setChatType('direct')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl transition-colors ${chatType === 'direct'
+                    ? 'bg-orange-100 text-orange-700'
+                    : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <Users className="w-4 h-4" />
+                  <span className="font-medium text-sm">園の先生と連絡</span>
+                </button>
+              </div>
+            </div>
+
             {/* AI相談機能 */}
             {chatType === 'ai' && (
               <>
-                {/* 先生相談ヘッダー - シンプル版 */}
+                {/* AI相談ヘッダー */}
                 <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
@@ -1324,47 +1453,111 @@ ${userMessage}
             {chatType === 'direct' && (
               <>
                 <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mr-3">
-                      <MessageSquare className="w-5 h-5 text-orange-600" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mr-3">
+                        <MessageSquare className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <h2 className="text-lg font-bold text-gray-800">
+                        園の先生と連絡
+                      </h2>
                     </div>
-                    <h2 className="text-lg font-bold text-gray-800">
-                      園の先生と連絡
-                    </h2>
+                    {childInfo && (
+                      <div className="text-xs text-gray-400">
+                        {childInfo.name}{getChildSuffix(childInfo.gender)}について
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* 利用開始案内 */}
-                <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
-                  <div className="text-center">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mx-auto mb-3">
-                      <MessageSquare className="w-8 h-8 text-orange-600" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-800 mb-2">園との連絡機能</h3>
-                    <p className="text-gray-500 text-sm mb-4">
-                      園の先生や管理者と直接メッセージのやり取りができます
-                    </p>
-                    
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-                      <div className="flex items-start">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center mr-3 mt-1 flex-shrink-0">
-                          <span className="text-blue-600 text-xs font-bold">!</span>
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-medium text-blue-800 mb-1">まもなく利用可能になります</h4>
-                          <p className="text-sm text-blue-700">
-                            現在、園との連絡機能を準備中です。<br />
-                            利用開始まで今しばらくお待ちください。
-                          </p>
-                        </div>
+                {currentDirectSession ? (
+                  /* チャット画面 */
+                  <>
+                    {/* チャット履歴 */}
+                    <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
+                      <div
+                        ref={chatScrollContainerRef}
+                        className="h-96 overflow-y-auto p-4 space-y-3"
+                      >
+                        {directChatSessions.find(s => s.id === currentDirectSession)?.messages.map((msg, index) => (
+                          <div key={index} className={`flex ${msg.sender === 'parent' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[80%] p-3 rounded-2xl ${msg.sender === 'parent'
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-gray-100 text-gray-800'
+                              }`}>
+                              <div className="text-sm">{msg.content}</div>
+                              <div className={`text-xs mt-1 ${msg.sender === 'parent' ? 'text-orange-100' : 'text-gray-500'}`}>
+                                {new Date(msg.timestamp).toLocaleTimeString('ja-JP', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={messagesEndRef} />
                       </div>
                     </div>
 
-                    <div className="text-xs text-gray-400">
-                      準備が整い次第、お知らせいたします
+                    {/* メッセージ入力 */}
+                    <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                      <div className="flex gap-3">
+                        <input
+                          type="text"
+                          value={directMessage}
+                          onChange={(e) => setDirectMessage(e.target.value)}
+                          placeholder="メッセージを入力..."
+                          className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendDirectMessage();
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={handleSendDirectMessage}
+                          disabled={!directMessage.trim()}
+                          className="px-6 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed focus:outline-none flex items-center gap-2"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          <Send size={16} />
+                          <span>送信</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* チャット開始画面 */
+                  <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mx-auto mb-4">
+                        <MessageSquare className="w-8 h-8 text-orange-600" />
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-800 mb-2">園の先生と連絡</h3>
+                      <p className="text-gray-500 text-sm mb-6">
+                        {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}について園の先生とメッセージのやり取りができます` : '園の先生とメッセージのやり取りができます'}
+                      </p>
+
+                      {childInfo ? (
+                        <button
+                          onClick={handleStartDirectChat}
+                          className="px-6 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 focus:outline-none flex items-center gap-2 mx-auto"
+                          style={{ WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          <MessageSquare size={16} />
+                          <span>チャットを開始</span>
+                        </button>
+                      ) : (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <p className="text-sm text-gray-600">
+                            まずはお子さまを選択してください
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
+                )}
               </>
             )}
           </div>
@@ -1434,7 +1627,7 @@ ${userMessage}
                     style={{ WebkitTapHighlightColor: 'transparent' }}>
                     <HelpCircle size={24} className="text-amber-600" />
                   </div>
-                                          <span className="text-sm font-bold text-gray-800">気になること</span>
+                  <span className="text-sm font-bold text-gray-800">気になること</span>
                   <span className="text-xs text-gray-500 mt-1">心配・疑問</span>
                 </button>
 
@@ -1875,11 +2068,11 @@ ${userMessage}
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
             <Dialog.Title className="text-lg font-bold text-gray-800 mb-1 flex items-center">
-              <span className="text-pink-500 mr-2">👶</span>
-              {editChildId ? 'お子さま情報の編集' : '新しいお子さまを登録'}
+              <span className="text-pink-500 mr-2">{editChildId ? '✏️' : '👶'}</span>
+              {editChildId ? 'お子さま情報を編集' : 'お子さま情報'}
             </Dialog.Title>
             <p className="text-sm text-gray-500 mb-6">
-              {editChildId ? '情報を編集してください' : 'お子さまの基本情報を入力してください'}
+              {editChildId ? 'お子さまの基本情報を編集できます' : 'お子さまの基本情報を入力してください'}
             </p>
 
             <div className="space-y-5">
@@ -1892,8 +2085,9 @@ ${userMessage}
                   id="child-name"
                   value={childName}
                   onChange={(e) => setChildName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  placeholder="例：たろう"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  placeholder="例: 山田太郎"
+                  required
                 />
               </div>
 
@@ -1946,9 +2140,9 @@ ${userMessage}
               {childBirthdate && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    年齢 <span className="text-xs text-gray-500 ml-2">(誕生日から自動計算)</span>
+                    年齢 <span className="text-xs text-gray-500">(生年月日から自動計算)</span>
                   </label>
-                  <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-medium">
+                  <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-blue-50 text-blue-800 font-medium">
                     {calculateAge(childBirthdate)}歳
                   </div>
                 </div>
@@ -1956,122 +2150,51 @@ ${userMessage}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  誕生日
+                  誕生日 <span className="text-red-500">*</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? new Date(childBirthdate).getFullYear().toString() : ''}
-                      onChange={(e) => {
-                        const year = e.target.value;
-                        if (!year) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setFullYear(parseInt(year));
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">年</option>
-                      {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? (new Date(childBirthdate).getMonth() + 1).toString() : ''}
-                      onChange={(e) => {
-                        const month = e.target.value;
-                        if (!month) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setMonth(parseInt(month) - 1);
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">月</option>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
-                        <option key={month} value={month}>{month}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <select
-                      className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent appearance-none bg-white"
-                      value={childBirthdate ? new Date(childBirthdate).getDate().toString() : ''}
-                      onChange={(e) => {
-                        const day = e.target.value;
-                        if (!day) return;
-                        const currentDate = childBirthdate ? new Date(childBirthdate) : new Date();
-                        currentDate.setDate(parseInt(day));
-                        const newBirthdate = currentDate.toISOString().split('T')[0];
-                        setChildBirthdate(newBirthdate);
-                      }}
-                    >
-                      <option value="">日</option>
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                        <option key={day} value={day}>{day}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <input
+                  type="date"
+                  value={childBirthdate}
+                  onChange={(e) => setChildBirthdate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  required
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  性別
+                  性別 <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'male'
-                      ? 'border-blue-300 bg-blue-50 text-blue-800'
-                      : 'border-gray-200 bg-white text-gray-700'
+                    onClick={() => setChildGender('male')}
+                    className={`px-4 py-4 rounded-xl border-2 transition-colors ${childGender === 'male'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-600'
                       }`}
                     style={{ WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => setChildGender('male')}
                   >
-                    <span className="mr-2">👦</span>
-                    男の子
+                    <span className="text-2xl block mb-1">👦</span>
+                    <span className="font-medium text-sm">男の子</span>
                   </button>
                   <button
                     type="button"
-                    className={`flex items-center justify-center px-4 py-3 border-2 rounded-xl text-sm font-medium focus:outline-none ${childGender === 'female'
-                      ? 'border-pink-300 bg-pink-50 text-pink-800'
-                      : 'border-gray-200 bg-white text-gray-700'
+                    onClick={() => setChildGender('female')}
+                    className={`px-4 py-4 rounded-xl border-2 transition-colors ${childGender === 'female'
+                      ? 'border-pink-500 bg-pink-50 text-pink-700'
+                      : 'border-gray-200 bg-white text-gray-600'
                       }`}
                     style={{ WebkitTapHighlightColor: 'transparent' }}
-                    onClick={() => setChildGender('female')}
                   >
-                    <span className="mr-2">👧</span>
-                    女の子
+                    <span className="text-2xl block mb-1">👧</span>
+                    <span className="font-medium text-sm">女の子</span>
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="mt-8 flex gap-3">
-              {editChildId && (
-                <button
-                  type="button"
-                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-xl focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => {
-                    if (window.confirm('本当に削除しますか？')) {
-                      removeChild(editChildId);
-                      setIsChildSettingsOpen(false);
-                      setEditChildId(null);
-                    }
-                  }}
-                >
-                  🗑️ 削除
-                </button>
-              )}
-
               <div className="flex-1 flex gap-3">
                 <button
                   type="button"
@@ -2079,17 +2202,19 @@ ${userMessage}
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                   onClick={() => setIsChildSettingsOpen(false)}
                 >
-                  キャンセル
+                  閉じる
                 </button>
 
-                <button
-                  type="button"
-                  className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-sm focus:outline-none"
-                  style={{ WebkitTapHighlightColor: 'transparent' }}
-                  onClick={saveChildInfo}
-                >
-                  {editChildId ? '保存' : '登録'}
-                </button>
+                {editChildId && (
+                  <button
+                    type="button"
+                    className="flex-1 px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-sm focus:outline-none"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    onClick={saveChildInfo}
+                  >
+                    📷 写真を保存
+                  </button>
+                )}
               </div>
             </div>
           </Dialog.Panel>

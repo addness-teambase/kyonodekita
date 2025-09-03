@@ -31,6 +31,21 @@ export interface CalendarEvent {
   title: string;
   time?: string;
   description?: string;
+  type?: 'attendance_record' | 'event' | 'holiday';
+  attendanceRecord?: AttendanceRecord;
+}
+
+// 出席・活動記録（管理者から受け取る情報）
+export interface AttendanceRecord {
+  id: string;
+  childId: string;
+  date: string;
+  usageStartTime?: string;
+  usageEndTime?: string;
+  childCondition: string;
+  activities: string;
+  recordedBy: string;
+  recordedAt: string;
 }
 
 export interface ChildInfo {
