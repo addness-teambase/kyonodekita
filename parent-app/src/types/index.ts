@@ -57,6 +57,14 @@ export interface ChildInfo {
   avatarImage?: string;
 }
 
+export interface FacilityInfo {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
 // 直接チャット用メッセージ
 export interface DirectChatMessage {
   id: string;

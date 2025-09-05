@@ -452,14 +452,15 @@ export const directChatApi = {
     },
 
     // メッセージを送信
-    async sendMessage(conversationId: string, senderUserId: string, senderType: 'parent' | 'admin', content: string) {
+    async sendMessage(conversationId: string, senderUserId: string, senderType: 'parent' | 'facility_admin', content: string) {
         const { data, error } = await supabase
             .from('direct_chat_messages')
             .insert({
                 conversation_id: conversationId,
                 sender_user_id: senderUserId,
                 sender_type: senderType,
-                content: content
+                content: content,
+                is_read: false
             })
             .select()
             .single();

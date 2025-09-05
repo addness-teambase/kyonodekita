@@ -4,10 +4,9 @@ import { supabase } from '../lib/supabase';
 interface User {
     id: string;
     username: string;
-    facility?: {
-        name: string;
-        adminName: string;
-    };
+    display_name?: string;
+    email?: string;
+    user_type: string;
 }
 
 interface AuthContextType {
@@ -41,44 +40,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // ローカルストレージからユーザー情報を読み込み
+    // ログイン状態復元（リロード時もログイン維持）
     useEffect(() => {
-        const loadUserFromStorage = async () => {
+        const initializeAuth = async () => {
             try {
                 const storedUser = localStorage.getItem('kyou-no-dekita-user');
                 if (storedUser) {
-                    const userData = JSON.parse(storedUser);
-
-                    // ユーザーデータの基本的なバリデーション
-                    if (userData && userData.id && userData.username) {
-                        // データベースからユーザー情報を再確認
-                        const { data: dbUser, error } = await supabase
-                            .from('users')
-                            .select('id, username')
-                            .eq('id', userData.id)
-                            .single();
-
-                        if (dbUser && !error) {
-                            console.log('ユーザー情報を復元しました:', dbUser.username);
-                            setUser(dbUser);
-                        } else {
-                            console.warn('DBでユーザーを再確認できませんでした。ローカルの情報を削除します。');
-                            localStorage.removeItem('kyou-no-dekita-user');
-                        }
-                    } else {
-                        console.log('無効なユーザーデータ。ローカルデータを削除します。');
-                        localStorage.removeItem('kyou-no-dekita-user');
-                    }
+                    const parsedUser = JSON.parse(storedUser);
+                    console.log('既存のログイン情報を復元します:', parsedUser.username);
+                    setUser(parsedUser);
+                } else {
+                    console.log('ログイン情報が見つかりません。ログアウト状態で開始します');
+                    setUser(null);
                 }
             } catch (error) {
-                console.error('ユーザー読み込みエラー:', error);
-                localStorage.removeItem('kyou-no-dekita-user');
+                console.error('認証初期化エラー:', error);
+                localStorage.removeItem('kyou-no-dekita-user'); // 破損したデータを削除
+                setUser(null);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        loadUserFromStorage();
+        initializeAuth();
     }, []);
 
 
@@ -91,12 +75,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // ユーザーを認証
+            // 親ユーザーを認証（user_type: 'parent'のみ）
             const { data: userData, error } = await supabase
                 .from('users')
-                .select('id, username')
+                .select('id, username, display_name, email, user_type')
                 .eq('username', username)
                 .eq('password', hashedPassword)
+                .eq('user_type', 'parent')
                 .single();
 
             if (error || !userData) {

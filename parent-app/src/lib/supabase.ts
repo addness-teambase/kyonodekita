@@ -161,29 +161,44 @@ export interface Database {
 export const directChatApi = {
     // 会話を取得または作成
     async getOrCreateConversation(childId: string, parentUserId: string) {
+        // まず、facility_childrenテーブルから正しいfacility_idを取得
+        const { data: facilityChild, error: facilityError } = await supabase
+            .from('facility_children')
+            .select('facility_id')
+            .eq('child_id', childId)
+            .eq('parent_user_id', parentUserId)
+            .eq('status', 'active')
+            .maybeSingle(); // singleではなくmaybeSingleを使用
+
+        if (facilityError || !facilityChild) {
+            console.error('facility_children情報の取得エラー:', facilityError);
+            return { data: null, error: facilityError };
+        }
+
         const { data: existingConversation, error: fetchError } = await supabase
             .from('direct_chat_conversations')
             .select('*')
             .eq('child_id', childId)
             .eq('parent_user_id', parentUserId)
-            .single();
+            .eq('facility_id', facilityChild.facility_id)
+            .maybeSingle(); // singleではなくmaybeSingleを使用
 
         if (existingConversation) {
             return { data: existingConversation, error: null };
         }
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
+        if (fetchError) {
+            console.error('既存会話の取得エラー:', fetchError);
             return { data: null, error: fetchError };
         }
 
         // 会話が存在しない場合は新しく作成
-        // facility_id をデフォルト値で設定（実際の実装では適切な facility_id を取得する必要があります）
         const { data: newConversation, error: createError } = await supabase
             .from('direct_chat_conversations')
             .insert({
                 child_id: childId,
                 parent_user_id: parentUserId,
-                facility_id: '00000000-0000-0000-0000-000000000001', // 仮の facility_id
+                facility_id: facilityChild.facility_id,
                 status: 'active'
             })
             .select()
@@ -207,14 +222,15 @@ export const directChatApi = {
     },
 
     // メッセージを送信
-    async sendMessage(conversationId: string, senderUserId: string, senderType: 'parent' | 'admin', content: string) {
+    async sendMessage(conversationId: string, senderUserId: string, senderType: 'parent' | 'facility_admin', content: string) {
         const { data, error } = await supabase
             .from('direct_chat_messages')
             .insert({
                 conversation_id: conversationId,
                 sender_user_id: senderUserId,
                 sender_type: senderType,
-                content: content
+                content: content,
+                is_read: false
             })
             .select()
             .single();

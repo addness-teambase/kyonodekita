@@ -111,9 +111,11 @@ const LoginPage: React.FC = () => {
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="パスワードを入力"
+                                    placeholder="パスワードを入力（6文字以上）"
                                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
                                     autoComplete="current-password"
+                                    minLength={6}
+                                    required
                                 />
                             </div>
                             <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>

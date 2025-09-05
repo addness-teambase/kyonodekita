@@ -118,6 +118,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
     const [childrenList, setChildrenList] = useState<ChildInfo[]>([]);
     const [activeChildId, setActiveChildId] = useState<string | null>(null);
+    const [facilityInfo, setFacilityInfo] = useState<{ id: string; name: string; address?: string; phone?: string; email?: string } | null>(null);
     const [selectedDate, setSelectedDate] = useState(startOfToday());
     const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
     const [activeCategory, setActiveCategory] = useState<RecordCategory>('achievement');
@@ -143,25 +144,37 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (!user) return;
 
         try {
-            // 管理者が登録した子供データの読み込み（現在は一時的にuser_idベースで取得）
-            // TODO: parent_user_idフィールドが実装されたらそれを使用する
-            const { data: children, error: childrenError } = await supabase
-                .from('children')
-                .select('*')
-                .order('created_at', { ascending: true })
-                .limit(50); // 一時的に全ての子供データから取得（実際の実装では関連付けが必要）
+            // 親ユーザーに関連する子供データと施設情報を取得
+            const { data: facilityChildrenData, error: facilityChildrenError } = await supabase
+                .from('facility_children')
+                .select(`
+                    child_id,
+                    facility_id,
+                    children (
+                        id,
+                        name,
+                        age,
+                        birthdate,
+                        gender,
+                        avatar_image
+                    )
+                `)
+                .eq('parent_user_id', user.id)
+                .eq('status', 'active');
 
-            if (childrenError) {
-                console.error('子供データの読み込みエラー:', childrenError);
-            } else if (children) {
-                const childrenList = children.map(child => ({
-                    id: child.id,
-                    name: child.name,
-                    age: child.age,
-                    birthdate: child.birthdate,
-                    gender: child.gender,
-                    avatarImage: child.avatar_image
-                }));
+            if (facilityChildrenError) {
+                console.error('子供データの読み込みエラー:', facilityChildrenError);
+            } else if (facilityChildrenData) {
+                const childrenList = facilityChildrenData
+                    .filter(item => item.children) // nullチェック
+                    .map(item => ({
+                        id: item.children.id,
+                        name: item.children.name,
+                        age: item.children.age,
+                        birthdate: item.children.birthdate,
+                        gender: item.children.gender,
+                        avatarImage: item.children.avatar_image
+                    }));
                 setChildrenList(childrenList);
 
                 // アクティブな子供IDが設定されていない場合、最初の子供を選択

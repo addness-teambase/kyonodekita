@@ -30,10 +30,6 @@ export interface ChildInfo {
   diagnosis?: string; // 診断名
   supportLevel?: string; // 支援レベル
   therapyTypes?: string[]; // 受けている療法の種類
-  medicationInfo?: string; // 服薬情報
-  allergyInfo?: string; // アレルギー情報
-  dietaryRestrictions?: string; // 食事制限
-  specialNotes?: string; // 特記事項
 }
 
 // カレンダーイベント
