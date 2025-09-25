@@ -1,18 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabaseの環境変数 (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY) が設定されていません。');
-}
+// Supabase設定（正しいAPIキーに更新）
+const supabaseUrl = 'https://ognianlobgsqcjpacgqo.supabase.co'
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbmlhbmxvYmdzcWNqcGFjZ3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwNjI5NTUsImV4cCI6MjA2NzYzODk1NX0.ppq_YYElXq7LgsYtJt_tG8IG0-Ch7FYtkxqQ3cQshic'
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-console.log('Supabase client initialized successfully.');
+console.log('Supabase client initialized successfully - Admin App');
 
 export { supabase };
 
-// 型定義
+// 統合データベース対応の型定義
 export interface Database {
     public: {
         Tables: {
@@ -21,6 +18,16 @@ export interface Database {
                     id: string
                     username: string
                     password: string
+                    user_type: 'parent' | 'admin' | 'facility_admin' | 'facility_staff'
+                    email: string | null
+                    display_name: string | null
+                    full_name: string | null
+                    phone: string | null
+                    facility_name: string | null
+                    facility_address: string | null
+                    facility_phone: string | null
+                    facility_email: string | null
+                    is_individual_account: boolean
                     created_at: string
                     updated_at: string
                 }
@@ -28,6 +35,16 @@ export interface Database {
                     id?: string
                     username: string
                     password: string
+                    user_type?: 'parent' | 'admin' | 'facility_admin' | 'facility_staff'
+                    email?: string | null
+                    display_name?: string | null
+                    full_name?: string | null
+                    phone?: string | null
+                    facility_name?: string | null
+                    facility_address?: string | null
+                    facility_phone?: string | null
+                    facility_email?: string | null
+                    is_individual_account?: boolean
                     created_at?: string
                     updated_at?: string
                 }
@@ -35,6 +52,248 @@ export interface Database {
                     id?: string
                     username?: string
                     password?: string
+                    user_type?: 'parent' | 'admin' | 'facility_admin' | 'facility_staff'
+                    email?: string | null
+                    display_name?: string | null
+                    full_name?: string | null
+                    phone?: string | null
+                    facility_name?: string | null
+                    facility_address?: string | null
+                    facility_phone?: string | null
+                    facility_email?: string | null
+                    is_individual_account?: boolean
+                    updated_at?: string
+                }
+            }
+            facilities: {
+                Row: {
+                    id: string
+                    name: string
+                    facility_code: string
+                    admin_user_id: string | null
+                    business_type: string
+                    address: string | null
+                    phone: string | null
+                    email: string | null
+                    business_hours: string | null
+                    operating_hours_start: string
+                    operating_hours_end: string
+                    capacity: number | null
+                    facility_type: string
+                    status: string
+                    is_active: boolean
+                    billing_plan: string
+                    monthly_fee: number | null
+                    ai_usage_limit: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    name: string
+                    facility_code: string
+                    admin_user_id?: string | null
+                    business_type?: string
+                    address?: string | null
+                    phone?: string | null
+                    email?: string | null
+                    business_hours?: string | null
+                    operating_hours_start?: string
+                    operating_hours_end?: string
+                    capacity?: number | null
+                    facility_type?: string
+                    status?: string
+                    is_active?: boolean
+                    billing_plan?: string
+                    monthly_fee?: number | null
+                    ai_usage_limit?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    name?: string
+                    facility_code?: string
+                    admin_user_id?: string | null
+                    business_type?: string
+                    address?: string | null
+                    phone?: string | null
+                    email?: string | null
+                    business_hours?: string | null
+                    operating_hours_start?: string
+                    operating_hours_end?: string
+                    capacity?: number | null
+                    facility_type?: string
+                    status?: string
+                    is_active?: boolean
+                    billing_plan?: string
+                    monthly_fee?: number | null
+                    ai_usage_limit?: number
+                    updated_at?: string
+                }
+            }
+            facility_users: {
+                Row: {
+                    id: string
+                    facility_id: string
+                    user_id: string | null
+                    username: string
+                    password: string
+                    display_name: string
+                    role: 'admin' | 'teacher' | 'staff'
+                    email: string | null
+                    phone: string | null
+                    is_active: boolean
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    facility_id: string
+                    user_id?: string | null
+                    username: string
+                    password: string
+                    display_name: string
+                    role?: 'admin' | 'teacher' | 'staff'
+                    email?: string | null
+                    phone?: string | null
+                    is_active?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    facility_id?: string
+                    user_id?: string | null
+                    username?: string
+                    password?: string
+                    display_name?: string
+                    role?: 'admin' | 'teacher' | 'staff'
+                    email?: string | null
+                    phone?: string | null
+                    is_active?: boolean
+                    updated_at?: string
+                }
+            }
+            facility_children: {
+                Row: {
+                    id: string
+                    child_id: string
+                    facility_id: string
+                    parent_user_id: string
+                    enrollment_date: string
+                    withdrawal_date: string | null
+                    status: 'pending' | 'active' | 'graduated' | 'withdrawn'
+                    has_support_limit_management: boolean
+                    support_certificate_expiry: string | null
+                    contracted_support_hours: number | null
+                    consultation_support_office: string | null
+                    consultation_support_staff_name: string | null
+                    consultation_support_staff_phone: string | null
+                    diagnosis: string | null
+                    support_level: string | null
+                    therapy_types: string[] | null
+                    medication_info: string | null
+                    emergency_contact_info: any | null
+                    allergy_info: string | null
+                    dietary_restrictions: string | null
+                    special_notes: string | null
+                    monthly_fee: number | null
+                    payment_status: 'current' | 'overdue' | 'suspended'
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    child_id: string
+                    facility_id: string
+                    parent_user_id: string
+                    enrollment_date?: string
+                    withdrawal_date?: string | null
+                    status?: 'pending' | 'active' | 'graduated' | 'withdrawn'
+                    has_support_limit_management?: boolean
+                    support_certificate_expiry?: string | null
+                    contracted_support_hours?: number | null
+                    consultation_support_office?: string | null
+                    consultation_support_staff_name?: string | null
+                    consultation_support_staff_phone?: string | null
+                    diagnosis?: string | null
+                    support_level?: string | null
+                    therapy_types?: string[] | null
+                    medication_info?: string | null
+                    emergency_contact_info?: any | null
+                    allergy_info?: string | null
+                    dietary_restrictions?: string | null
+                    special_notes?: string | null
+                    monthly_fee?: number | null
+                    payment_status?: 'current' | 'overdue' | 'suspended'
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    child_id?: string
+                    facility_id?: string
+                    parent_user_id?: string
+                    enrollment_date?: string
+                    withdrawal_date?: string | null
+                    status?: 'pending' | 'active' | 'graduated' | 'withdrawn'
+                    has_support_limit_management?: boolean
+                    support_certificate_expiry?: string | null
+                    contracted_support_hours?: number | null
+                    consultation_support_office?: string | null
+                    consultation_support_staff_name?: string | null
+                    consultation_support_staff_phone?: string | null
+                    diagnosis?: string | null
+                    support_level?: string | null
+                    therapy_types?: string[] | null
+                    medication_info?: string | null
+                    emergency_contact_info?: any | null
+                    allergy_info?: string | null
+                    dietary_restrictions?: string | null
+                    special_notes?: string | null
+                    monthly_fee?: number | null
+                    payment_status?: 'current' | 'overdue' | 'suspended'
+                    updated_at?: string
+                }
+            }
+            announcement_messages: {
+                Row: {
+                    id: string
+                    facility_id: string
+                    sender_facility_user_id: string
+                    title: string
+                    content: string
+                    priority: 'low' | 'normal' | 'high' | 'urgent'
+                    category: 'general' | 'event' | 'emergency' | 'notice' | 'schedule'
+                    is_published: boolean
+                    published_at: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    facility_id: string
+                    sender_facility_user_id: string
+                    title: string
+                    content: string
+                    priority?: 'low' | 'normal' | 'high' | 'urgent'
+                    category?: 'general' | 'event' | 'emergency' | 'notice' | 'schedule'
+                    is_published?: boolean
+                    published_at?: string
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    facility_id?: string
+                    sender_facility_user_id?: string
+                    title?: string
+                    content?: string
+                    priority?: 'low' | 'normal' | 'high' | 'urgent'
+                    category?: 'general' | 'event' | 'emergency' | 'notice' | 'schedule'
+                    is_published?: boolean
+                    published_at?: string
                     updated_at?: string
                 }
             }
@@ -706,5 +965,99 @@ export const notificationApi = {
             .eq('is_read', false);
 
         return { count, error };
+    }
+};
+
+// 一斉送信メッセージAPI
+export const announcementApi = {
+    // 一斉メッセージを作成
+    async createAnnouncement(announcement: {
+        facility_id: string;
+        sender_facility_user_id: string;
+        title: string;
+        content: string;
+        priority?: 'low' | 'normal' | 'high' | 'urgent';
+        category?: 'general' | 'event' | 'emergency' | 'notice' | 'schedule';
+    }) {
+        const { data, error } = await supabase
+            .from('announcement_messages')
+            .insert({
+                ...announcement,
+                priority: announcement.priority || 'normal',
+                category: announcement.category || 'general',
+                is_published: true,
+                published_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        return { data, error };
+    },
+
+    // 施設の一斉メッセージ一覧を取得
+    async getAnnouncementsByFacility(facilityId: string) {
+        const { data, error } = await supabase
+            .from('announcement_messages')
+            .select(`
+                *,
+                sender:facility_users!sender_facility_user_id(
+                    display_name,
+                    role
+                )
+            `)
+            .eq('facility_id', facilityId)
+            .eq('is_published', true)
+            .order('published_at', { ascending: false });
+
+        return { data, error };
+    },
+
+    // 一斉メッセージを更新
+    async updateAnnouncement(announcementId: string, updates: {
+        title?: string;
+        content?: string;
+        priority?: 'low' | 'normal' | 'high' | 'urgent';
+        category?: 'general' | 'event' | 'emergency' | 'notice' | 'schedule';
+    }) {
+        const { data, error } = await supabase
+            .from('announcement_messages')
+            .update({
+                ...updates,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', announcementId)
+            .select()
+            .single();
+
+        return { data, error };
+    },
+
+    // 一斉メッセージを削除
+    async deleteAnnouncement(announcementId: string) {
+        const { data, error } = await supabase
+            .from('announcement_messages')
+            .delete()
+            .eq('id', announcementId);
+
+        return { data, error };
+    },
+
+    // 最近の一斉メッセージを取得（限定数）
+    async getRecentAnnouncements(facilityId: string, limit: number = 10) {
+        const { data, error } = await supabase
+            .from('announcement_messages')
+            .select(`
+                *,
+                sender:facility_users!sender_facility_user_id(
+                    display_name,
+                    role
+                )
+            `)
+            .eq('facility_id', facilityId)
+            .eq('is_published', true)
+            .order('published_at', { ascending: false })
+            .limit(limit);
+
+        return { data, error };
     }
 }; 

@@ -17,20 +17,8 @@ const LoginPage: React.FC = () => {
             return;
         }
 
-        if (username.length < 2) {
-            setError('ユーザー名は2文字以上で入力してください');
-            return;
-        }
-
-        if (password.length < 6) {
-            setError('パスワードは6文字以上で入力してください');
-            return;
-        }
-
         try {
-            console.log('ログイン試行:', { username, password: '***' });
             const result = await login(username, password);
-            console.log('ログイン結果:', result);
             if (!result.success) {
                 setError(result.error || 'ログインに失敗しました');
             }
@@ -63,7 +51,7 @@ const LoginPage: React.FC = () => {
                             ログイン
                         </h2>
                         <p className="text-sm text-gray-600">
-                            管理者から発行されたユーザー名とパスワードでログイン
+                            既にアカウントをお持ちの場合はログインしてください
                         </p>
                     </div>
 
@@ -95,7 +83,6 @@ const LoginPage: React.FC = () => {
                                     autoComplete="username"
                                 />
                             </div>
-                            <p className="mt-1 text-xs text-gray-500">2文字以上で入力してください</p>
                         </div>
 
                         <div>
@@ -111,14 +98,12 @@ const LoginPage: React.FC = () => {
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="パスワードを入力（6文字以上）"
+                                    placeholder="パスワードを入力"
                                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors"
                                     autoComplete="current-password"
-                                    minLength={6}
                                     required
                                 />
                             </div>
-                            <p className="mt-1 text-xs text-gray-500">6文字以上で入力してください</p>
                         </div>
 
                         <div className="pt-2">

@@ -57,37 +57,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     const userData = JSON.parse(storedUser);
 
                     if (userData && userData.id && userData.username) {
-                        // データベースからユーザー情報を再確認
+                        // データベースから管理者情報を再確認（統合データベース対応）
                         const { data: dbUser, error } = await supabase
                             .from('users')
-                            .select('id, username')
+                            .select('id, username, user_type, display_name')
                             .eq('id', userData.id)
+                            .eq('user_type', 'facility_admin')
                             .single();
 
                         if (dbUser && !error) {
-                            // データベースから詳細な施設情報を取得
-                            const { data: userDetails } = await supabase
-                                .from('users')
-                                .select('facility_name, display_name, facility_address, facility_phone, facility_email')
-                                .eq('id', dbUser.id)
-                                .single();
+                            console.log('管理者ユーザー確認成功:', dbUser.username);
+
+                            // 管理者が管理する施設情報を取得
+                            const { data: facilityData, error: facilityError } = await supabase
+                                .from('facilities')
+                                .select('id, name, address, phone, email')
+                                .eq('admin_user_id', dbUser.id)
+                                .maybeSingle();
+
+                            if (facilityError) {
+                                console.warn('施設情報取得エラー:', facilityError);
+                            }
 
                             // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
                             const userWithFacility: User = {
                                 id: dbUser.id,
                                 username: dbUser.username,
                                 facility: {
-                                    name: userDetails?.facility_name || 'きょうのできた',
-                                    adminName: userDetails?.display_name || dbUser.username,
-                                    address: userDetails?.facility_address || undefined,
-                                    phone: userDetails?.facility_phone || undefined,
-                                    email: userDetails?.facility_email || undefined
+                                    name: facilityData?.name || 'きょうのできた保育園',
+                                    adminName: dbUser.display_name || dbUser.username,
+                                    address: facilityData?.address || undefined,
+                                    phone: facilityData?.phone || undefined,
+                                    email: facilityData?.email || undefined
                                 }
                             };
-                            console.log('ユーザー情報を復元しました:', dbUser.username);
+                            console.log('管理者情報復元完了:', {
+                                username: dbUser.username,
+                                facilityName: facilityData?.name,
+                                facilityId: facilityData?.id
+                            });
                             setUser(userWithFacility);
                         } else {
-                            console.warn('DBでユーザーを再確認できませんでした。ローカルの情報を削除します。');
+                            console.warn('管理者情報の確認に失敗:', error?.message);
                             localStorage.removeItem('kyou-no-dekita-user');
                         }
                     } else {
@@ -111,52 +122,114 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             console.log('サインアップ開始:', { username });
 
-            // ユーザー名の重複チェック
-            const { data: existingUser, error: checkError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('username', username)
-                .single();
-
-            if (checkError && checkError.code !== 'PGRST116') { // PGRST116は結果が0件だった場合のエラー
-                console.error('ユーザー名重複チェックエラー:', checkError);
-                return { success: false, error: 'データベースエラーが発生しました。' };
-            }
-
-            if (existingUser) {
-                console.log('ユーザー名重複:', username);
-                return { success: false, error: 'このユーザー名は既に使用されています' };
-            }
-
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // ユーザーを作成
-            const { data: newUser, error } = await supabase
+            // 既存ユーザーチェック（再登録の場合は上書き）
+            const { data: existingUser, error: checkError } = await supabase
                 .from('users')
-                .insert({
-                    username: username,
-                    password: hashedPassword
-                })
-                .select('id, username')
-                .single();
+                .select('id, user_type')
+                .eq('username', username)
+                .maybeSingle();
 
-            if (error) {
-                console.error('Supabaseサインアップエラー:', error);
-                return { success: false, error: 'アカウント作成に失敗しました。' };
+            let newUser;
+            let isUpdate = false;
+
+            if (existingUser) {
+                console.log('既存ユーザー発見 - データを更新:', username);
+                // 既存ユーザーのデータを更新（再登録を許可）
+                const { data: updatedUser, error: updateError } = await supabase
+                    .from('users')
+                    .update({
+                        password: hashedPassword,
+                        user_type: 'facility_admin',
+                        display_name: username,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingUser.id)
+                    .select('id, username, user_type, display_name')
+                    .single();
+
+                if (updateError) {
+                    console.error('ユーザー更新エラー:', updateError);
+                    return { success: false, error: 'アカウント更新に失敗しました。' };
+                }
+
+                newUser = updatedUser;
+                isUpdate = true;
+            } else {
+                // 新規ユーザーを作成
+                const { data: createdUser, error: createError } = await supabase
+                    .from('users')
+                    .insert({
+                        username: username,
+                        password: hashedPassword,
+                        user_type: 'facility_admin',
+                        display_name: username
+                    })
+                    .select('id, username, user_type, display_name')
+                    .single();
+
+                if (createError) {
+                    console.error('ユーザー作成エラー:', createError);
+                    return { success: false, error: 'アカウント作成に失敗しました。' };
+                }
+
+                newUser = createdUser;
             }
 
             if (newUser) {
+                console.log(isUpdate ? '管理者ユーザー更新成功:' : '管理者ユーザー作成成功:', newUser.id);
+
+                // 既存の施設があるかチェック
+                let newFacility;
+                const { data: existingFacility, error: existingFacilityError } = await supabase
+                    .from('facilities')
+                    .select('id, name, address, phone, email')
+                    .eq('admin_user_id', newUser.id)
+                    .maybeSingle();
+
+                if (existingFacility && !existingFacilityError) {
+                    console.log('既存の施設を使用:', existingFacility.name);
+                    newFacility = existingFacility;
+                } else {
+                    // 管理者用の施設を新規作成
+                    const facilityCode = `FAC-${newUser.id.slice(0, 8)}-${Date.now()}`;
+                    const { data: createdFacility, error: facilityError } = await supabase
+                        .from('facilities')
+                        .insert({
+                            name: `${newUser.display_name || newUser.username}の施設`,
+                            facility_code: facilityCode,
+                            admin_user_id: newUser.id,
+                            business_type: 'daycare'
+                        })
+                        .select('id, name, address, phone, email')
+                        .single();
+
+                    if (facilityError) {
+                        console.error('施設作成エラー:', facilityError);
+                        // 施設作成に失敗した場合でもユーザー作成は成功とする
+                    } else {
+                        console.log('新しい施設作成成功:', createdFacility?.name);
+                    }
+
+                    newFacility = createdFacility;
+                }
+
                 // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
                 const userWithFacility: User = {
                     id: newUser.id,
                     username: newUser.username,
                     facility: {
-                        name: 'きょうのできた',
-                        adminName: newUser.username // ユーザー名を管理者名として使用
+                        name: newFacility?.name || `${newUser.username}の施設`,
+                        adminName: newUser.display_name || newUser.username,
+                        address: newFacility?.address || undefined,
+                        phone: newFacility?.phone || undefined,
+                        email: newFacility?.email || undefined
                     }
                 };
-                console.log('ユーザー作成成功:', newUser.id);
+
+                console.log('アカウント作成完了:', userWithFacility);
                 setUser(userWithFacility);
                 localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userWithFacility));
                 return { success: true };
@@ -179,39 +252,121 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // ユーザーを認証
+            // 管理者認証（統合データベース対応）
             const { data: userData, error } = await supabase
                 .from('users')
-                .select('id, username')
+                .select('id, username, user_type, display_name')
                 .eq('username', username)
                 .eq('password', hashedPassword)
+                .eq('user_type', 'facility_admin')
                 .single();
 
             if (error || !userData) {
-                console.warn('Supabaseログインエラー:', error?.message || 'ユーザーデータが見つかりません');
+                console.warn('管理者ログインエラー:', error?.message || '管理者データが見つかりません');
+
+                // 既存ユーザーの修復を試行
+                console.log('フォールバック認証を試行...');
+                const { data: fallbackData, error: fallbackError } = await supabase
+                    .from('users')
+                    .select('id, username, user_type, display_name')
+                    .eq('username', username)
+                    .eq('password', hashedPassword)
+                    .single();
+
+                if (fallbackData && !fallbackError) {
+                    console.log('フォールバックで見つかったユーザー:', fallbackData);
+
+                    // user_typeを修正
+                    if (fallbackData.user_type !== 'facility_admin') {
+                        console.log('user_typeを修正します:', fallbackData.user_type, '→ facility_admin');
+                        const { error: updateError } = await supabase
+                            .from('users')
+                            .update({ user_type: 'facility_admin' })
+                            .eq('id', fallbackData.id);
+
+                        if (updateError) {
+                            console.error('user_type更新エラー:', updateError);
+                        } else {
+                            fallbackData.user_type = 'facility_admin';
+                            console.log('user_typeを更新しました');
+                        }
+                    }
+
+                    // 施設情報を取得/作成
+                    let { data: facilityData, error: facilityError } = await supabase
+                        .from('facilities')
+                        .select('id, name, address, phone, email')
+                        .eq('admin_user_id', fallbackData.id)
+                        .maybeSingle();
+
+                    if (!facilityData && !facilityError) {
+                        console.log('施設が存在しないため作成します...');
+                        const facilityCode = `FAC-${fallbackData.id.slice(0, 8)}-${Date.now()}`;
+                        const { data: newFacility, error: createError } = await supabase
+                            .from('facilities')
+                            .insert({
+                                name: `${fallbackData.display_name || fallbackData.username}の施設`,
+                                facility_code: facilityCode,
+                                admin_user_id: fallbackData.id,
+                                business_type: 'daycare'
+                            })
+                            .select('id, name, address, phone, email')
+                            .single();
+
+                        if (!createError && newFacility) {
+                            facilityData = newFacility;
+                            console.log('施設を作成しました:', newFacility.name);
+                        }
+                    }
+
+                    // 管理者オブジェクトを作成
+                    const userWithFacility = {
+                        id: fallbackData.id,
+                        username: fallbackData.username,
+                        facility: {
+                            name: facilityData?.name || `${fallbackData.username}の施設`,
+                            adminName: fallbackData.display_name || fallbackData.username,
+                            address: facilityData?.address || undefined,
+                            phone: facilityData?.phone || undefined,
+                            email: facilityData?.email || undefined
+                        }
+                    };
+
+                    console.log('フォールバックログイン成功:', userWithFacility);
+                    setUser(userWithFacility);
+                    localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userWithFacility));
+                    return { success: true };
+                }
+
                 return {
                     success: false,
-                    error: 'ユーザー名またはパスワードが間違っています'
+                    error: 'ユーザー名またはパスワードが間違っています。新規登録が必要な場合があります。'
                 };
             }
 
-            // データベースから詳細な施設情報を取得
-            const { data: userDetails } = await supabase
-                .from('users')
-                .select('facility_name, display_name, facility_address, facility_phone, facility_email')
-                .eq('id', userData.id)
-                .single();
+            console.log('管理者認証成功:', userData.username);
+
+            // 管理者が管理する施設情報を取得
+            const { data: facilityData, error: facilityError } = await supabase
+                .from('facilities')
+                .select('id, name, address, phone, email')
+                .eq('admin_user_id', userData.id)
+                .maybeSingle();
+
+            if (facilityError) {
+                console.warn('施設情報取得エラー:', facilityError);
+            }
 
             // 管理者用のユーザーオブジェクトを作成（facility情報を含む）
             const userWithFacility: User = {
                 id: userData.id,
                 username: userData.username,
                 facility: {
-                    name: userDetails?.facility_name || 'きょうのできた',
-                    adminName: userDetails?.display_name || userData.username,
-                    address: userDetails?.facility_address || undefined,
-                    phone: userDetails?.facility_phone || undefined,
-                    email: userDetails?.facility_email || undefined
+                    name: facilityData?.name || 'きょうのできた保育園',
+                    adminName: userData.display_name || userData.username,
+                    address: facilityData?.address || undefined,
+                    phone: facilityData?.phone || undefined,
+                    email: facilityData?.email || undefined
                 }
             };
             console.log('Supabaseログイン成功:', userData.id);

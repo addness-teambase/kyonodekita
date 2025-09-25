@@ -70,42 +70,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
         setIsLoading(true);
         try {
-            console.log('ログイン開始:', { username });
-
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
 
-            // 親ユーザーを認証（user_type: 'parent'のみ）
+            // ユーザー認証
             const { data: userData, error } = await supabase
                 .from('users')
                 .select('id, username, display_name, email, user_type')
                 .eq('username', username)
                 .eq('password', hashedPassword)
-                .eq('user_type', 'parent')
                 .single();
 
             if (error || !userData) {
-                console.warn('Supabaseログインエラー:', error?.message || 'ユーザーデータが見つかりません');
                 return {
                     success: false,
                     error: 'ユーザー名またはパスワードが間違っています'
                 };
             }
 
-            console.log('Supabaseログイン成功:', userData.id);
             setUser(userData);
             localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userData));
             return { success: true };
         } catch (error) {
-            console.error('予期しないログインエラー:', error);
+            console.error('ログインエラー:', error);
             return {
                 success: false,
-                error: 'システムエラーが発生しました。'
+                error: 'ログインに失敗しました'
             };
         } finally {
             setIsLoading(false);
         }
     };
+
 
     const logout = async (): Promise<void> => {
         try {

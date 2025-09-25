@@ -1,11 +1,6 @@
 import { ChildObservation } from '../types';
-import { GoogleGenAI } from '@google/genai';
 
 const STORAGE_KEY = 'child-observation-records';
-
-const ai = new GoogleGenAI({
-  apiKey: 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
-});
 
 export const getObservations = (): ChildObservation[] => {
   try {
@@ -55,120 +50,151 @@ export const getStatusColor = (status: string): string => {
   }
 };
 
-export const generateDiarySummary = async (stressEvents: ChildObservation[], goodThingEvents: ChildObservation[]): Promise<string> => {
+// 個人の成長記録に基づいたサマリー生成
+export const generatePersonalizedSummary = (stressEvents: ChildObservation[], goodThingEvents: ChildObservation[], childInfo?: any): string => {
   if (stressEvents.length === 0 && goodThingEvents.length === 0) {
-    return '今日の記録\n\n今日はまだ記録がありません。';
+    return `今日の記録
+
+${childInfo?.name || 'お子さま'}の今日はまだ記録がありません。
+何か気になることや良かったことがあったら、ぜひ記録してみてくださいね。`;
   }
 
-  try {
-    const prompt = `
-以下の記録から、一日のサマリーを作成してください。
+  const childName = childInfo?.name || 'お子さま';
+  const totalEvents = stressEvents.length + goodThingEvents.length;
 
-ストレス記録:
-${stressEvents.map(e => `- ${formatTime(e.timestamp)}: ${e.level}
-内容: ${e.content}`).join('\n')}
+  let summary = `今日の記録\n\n`;
 
-良かったこと:
-${goodThingEvents.map(e => `- ${formatTime(e.timestamp)}: ${e.level}
-内容: ${e.content}`).join('\n')}
+  // 記録の概要
+  if (goodThingEvents.length > stressEvents.length) {
+    summary += `${childName}にとって良い一日でした！ `;
+  } else if (stressEvents.length > goodThingEvents.length) {
+    summary += `${childName}にとって少し大変な一日でしたが、成長の機会でもありました。 `;
+  } else {
+    summary += `${childName}にとってバランスの取れた一日でした。 `;
+  }
 
-要件:
-1. タイトルは「今日の記録」で固定
-2. 150-200字程度で簡潔に
-3. 時系列で出来事を要約
-4. ストレスと良かったことをバランスよく含める
-5. 最後に短い前向きな一言を添える
+  // 時系列での記録内容
+  const allEvents = [
+    ...stressEvents.map(e => ({ ...e, type: 'stress' })),
+    ...goodThingEvents.map(e => ({ ...e, type: 'good' }))
+  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-出力形式:
-今日の記録
-
-（ここに記録の本文）`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        thinkingConfig: {
-          thinkingBudget: 0, // Disables thinking
-        },
-      }
+  if (allEvents.length > 0) {
+    summary += `\n\n【記録内容】\n`;
+    allEvents.forEach(event => {
+      const time = formatTime(event.timestamp);
+      const icon = event.type === 'good' ? '✨' : '💭';
+      summary += `${icon} ${time}: ${event.content}\n`;
     });
-
-    return response.text || defaultSummary(stressEvents, goodThingEvents);
-  } catch (error) {
-    console.error('Error generating diary summary:', error);
-    return defaultSummary(stressEvents, goodThingEvents);
   }
+
+  // 成長のポイント
+  if (goodThingEvents.length > 0) {
+    summary += `\n🌟 今日の成長ポイント: ${goodThingEvents.length}個の素敵な瞬間を記録しました`;
+  }
+
+  if (stressEvents.length > 0) {
+    summary += `\n💪 頑張ったこと: ${stressEvents.length}個の気になることと向き合いました`;
+  }
+
+  return summary;
 };
 
-export const getMotivationalMessage = async (events: ChildObservation[]): Promise<string> => {
+// 成長記録に基づいた個人的なメッセージ生成
+export const getPersonalizedMessage = (events: ChildObservation[], childInfo?: any): string => {
   if (events.length === 0) return '';
 
-  try {
-    const prompt = `
-以下のストレス記録から、励ましのメッセージを作成してください。
+  const childName = childInfo?.name || 'お子さま';
+  const eventCount = events.length;
 
-記録:
-${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
+  // レベル別の分析
+  const levelCounts = events.reduce((acc, event) => {
+    acc[event.level] = (acc[event.level] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
-要件:
-1. 50-80字程度で簡潔に
-2. 共感的で前向きな内容
-3. 具体的なアドバイスは控えめに
+  // 主要なレベルを特定
+  const mainLevel = Object.entries(levelCounts)
+    .sort(([, a], [, b]) => b - a)[0]?.[0];
 
-出力形式:
-（ここにメッセージ）`;
+  // レベルに応じたメッセージ
+  const messages = {
+    happy: [
+      `${childName}の笑顔がたくさん見られた素敵な日ですね！`,
+      `${childName}が楽しそうにしている様子が伝わってきます♪`,
+      `${childName}の嬉しそうな表情を想像すると、こちらも嬉しくなります！`
+    ],
+    good: [
+      `${childName}の成長を感じられる出来事がありましたね！`,
+      `${childName}らしい素敵な一面を見つけられましたね。`,
+      `${childName}の頑張りが実を結んでいるのを感じます。`
+    ],
+    normal: [
+      `${childName}の日常の様子をよく観察されていますね。`,
+      `${childName}の小さな変化も大切な成長の記録です。`,
+      `${childName}との穏やかな時間を過ごされましたね。`
+    ],
+    tired: [
+      `${childName}も時には疲れることがありますね。そんな日もあります。`,
+      `${childName}が疲れた時の様子を記録することも大切です。`,
+      `${childName}のペースを大切にしてあげてください。`
+    ],
+    worried: [
+      `${childName}のことを心配されているのが伝わります。親の愛情ですね。`,
+      `${childName}の気になることを記録しておくことで、成長を見守れますね。`,
+      `${childName}の変化を見逃さずに記録されている、素晴らしい観察力です。`
+    ]
+  };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        thinkingConfig: {
-          thinkingBudget: 0, // Disables thinking
-        },
-      }
-    });
+  const messageList = messages[mainLevel as keyof typeof messages] || messages.normal;
+  const message = messageList[Math.floor(Math.random() * messageList.length)];
 
-    return response.text || defaultMotivationalMessage();
-  } catch (error) {
-    console.error('Error generating motivational message:', error);
-    return defaultMotivationalMessage();
+  // 記録の頻度に応じた追加メッセージ
+  let additionalMessage = '';
+  if (eventCount >= 3) {
+    additionalMessage = ' 今日もたくさんの記録をありがとうございます！';
+  } else if (eventCount === 1) {
+    additionalMessage = ' 一つ一つの記録が大切な思い出になりますね。';
   }
+
+  return message + additionalMessage;
 };
 
-export const getPraiseMessage = async (events: ChildObservation[]): Promise<string> => {
+// 成長記録に基づいた褒めメッセージ生成
+export const getPersonalizedPraiseMessage = (events: ChildObservation[], childInfo?: any): string => {
   if (events.length === 0) return '';
 
-  try {
-    const prompt = `
-以下の良かったことの記録から、褒めのメッセージを作成してください。
+  const childName = childInfo?.name || 'お子さま';
+  const eventCount = events.length;
 
-記録:
-${events.map(e => `- ${e.level}: ${e.content}`).join('\n')}
+  // レベル別の分析
+  const levelCounts = events.reduce((acc, event) => {
+    acc[event.level] = (acc[event.level] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
-要件:
-1. 50-80字程度で簡潔に
-2. 具体的な良かった点に触れる
-3. 前向きで励みになる内容
+  // 褒めメッセージのバリエーション
+  const praiseMessages = [
+    `${childName}の素晴らしい成長が記録できましたね！`,
+    `${childName}の頑張りがよく伝わってきます✨`,
+    `${childName}らしい素敵な瞬間がたくさんありましたね`,
+    `${childName}の良いところをしっかりと見つけられていますね！`,
+    `${childName}の成長の瞬間を大切に記録されていて素晴らしいです`
+  ];
 
-出力形式:
-（ここにメッセージ）`;
+  // イベント数に基づく追加メッセージ
+  const countMessages = {
+    1: '一つ一つの記録が宝物ですね💎',
+    2: '今日も良い発見がありましたね😊',
+    3: 'たくさんの成長を見つけられましたね🌟',
+    4: '素晴らしい観察力です！今日は特に良い日でしたね🎉',
+    5: '今日は本当に充実した一日だったようですね！✨'
+  };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        thinkingConfig: {
-          thinkingBudget: 0, // Disables thinking
-        },
-      }
-    });
-    
-    return response.text || defaultPraiseMessage();
-  } catch (error) {
-    console.error('Error generating praise message:', error);
-    return defaultPraiseMessage();
-  }
+  const baseMessage = praiseMessages[Math.floor(Math.random() * praiseMessages.length)];
+  const additionalMessage = countMessages[Math.min(eventCount, 5) as keyof typeof countMessages];
+
+  return `${baseMessage} ${additionalMessage}`;
 };
 
 const defaultSummary = (stressEvents: ChildObservation[], goodThingEvents: ChildObservation[]): string => {

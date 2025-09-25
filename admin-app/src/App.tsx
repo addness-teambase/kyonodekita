@@ -21,7 +21,8 @@ import {
   Clock,
   BookOpen,
   Heart,
-  Trash2
+  Trash2,
+  Megaphone
 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
@@ -244,6 +245,14 @@ const App: React.FC = () => {
   const [selectedChildForRecords, setSelectedChildForRecords] = useState<string | null>(null);
   const [recordsFilter, setRecordsFilter] = useState<'all' | 'achievement' | 'happy' | 'failure' | 'trouble'>('all');
   const [recordsSearchQuery, setRecordsSearchQuery] = useState('');
+
+  // 一斉メッセージ関連
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementContent, setAnnouncementContent] = useState('');
+  const [announcementPriority, setAnnouncementPriority] = useState<'normal' | 'high' | 'urgent'>('normal');
+  const [announcementCategory, setAnnouncementCategory] = useState<'general' | 'event' | 'emergency' | 'notice' | 'schedule'>('general');
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [showAddChildModal, setShowAddChildModal] = useState(false);
@@ -757,6 +766,37 @@ const App: React.FC = () => {
     }
   };
 
+  // 送信済み一斉メッセージを取得
+  const loadAnnouncements = async () => {
+    try {
+      const { data: facilityUser, error: facilityUserError } = await supabase
+        .from('facility_users')
+        .select('facility_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (facilityUserError || !facilityUser) return;
+
+      const { data, error } = await supabase
+        .from('announcement_messages')
+        .select(`
+          *,
+          sender_facility_user:facility_users!sender_facility_user_id(display_name)
+        `)
+        .eq('facility_id', facilityUser.facility_id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('お知らせ取得エラー:', error);
+        return;
+      }
+
+      setAnnouncements(data || []);
+    } catch (error) {
+      console.error('エラー:', error);
+    }
+  };
+
   // ユーザーがログインしたときにデータを取得
   useEffect(() => {
     if (user) {
@@ -779,6 +819,10 @@ const App: React.FC = () => {
       // 未読メッセージ数を安全に取得
       fetchUnreadMessagesCount().catch(error => {
         console.warn('初期未読数取得失敗:', error);
+      });
+      // 送信済み一斉メッセージを取得
+      loadAnnouncements().catch(error => {
+        console.warn('お知らせ取得失敗:', error);
       });
     }
   }, [user, showFirstTimeSetup]);
@@ -1598,12 +1642,78 @@ const App: React.FC = () => {
     }
   };
 
+  // 一斉メッセージ送信
+  const sendAnnouncement = async () => {
+    if (!announcementTitle.trim() || !announcementContent.trim() || !user) {
+      alert('タイトルと本文を入力してください。');
+      return;
+    }
+
+    setSendingAnnouncement(true);
+
+    try {
+      // 現在のユーザーの施設情報を取得
+      const { data: facilityUser, error: facilityUserError } = await supabase
+        .from('facility_users')
+        .select('facility_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (facilityUserError || !facilityUser) {
+        console.error('施設情報の取得に失敗しました:', facilityUserError);
+        alert('施設情報の取得に失敗しました。');
+        return;
+      }
+
+      // 一斉メッセージを保存
+      const { data, error } = await supabase
+        .from('announcement_messages')
+        .insert({
+          facility_id: facilityUser.facility_id,
+          sender_facility_user_id: user.id,
+          title: announcementTitle,
+          content: announcementContent,
+          priority: announcementPriority,
+          category: announcementCategory,
+          is_published: true,
+          published_at: new Date().toISOString()
+        })
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('メッセージ送信エラー:', error);
+        alert('メッセージの送信に失敗しました。');
+        return;
+      }
+
+      // フォームをリセット
+      setAnnouncementTitle('');
+      setAnnouncementContent('');
+      setAnnouncementPriority('normal');
+      setAnnouncementCategory('general');
+
+      alert(`一斉メッセージを送信しました！\n${children.length}人の保護者に通知されます。`);
+
+      // 送信済みメッセージ一覧を更新
+      await loadAnnouncements();
+
+    } catch (error) {
+      console.error('エラー:', error);
+      alert('メッセージの送信中にエラーが発生しました。');
+    } finally {
+      setSendingAnnouncement(false);
+    }
+  };
+
+
   // サイドバーメニュー
   const sidebarItems = [
     { id: 'management', label: '園児管理', icon: Users },
     { id: 'attendance', label: '出席記録', icon: BookOpen },
     { id: 'records', label: '成長記録', icon: Heart },
     { id: 'messages', label: 'メッセージ', icon: MessageSquare, badge: stats.unreadMessages },
+    { id: 'announcements', label: '一斉お知らせ', icon: Megaphone },
     { id: 'calendar', label: 'カレンダー', icon: Calendar },
     { id: 'settings', label: '設定', icon: Settings }
   ];
@@ -2468,6 +2578,153 @@ const App: React.FC = () => {
                 )}
               </div>
             )}
+          </div>
+        );
+
+      case 'announcements':
+        return (
+          <div className="space-y-6">
+            {/* 一斉お知らせヘッダー */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              <div className="p-6 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-900">一斉お知らせ</h2>
+                <p className="text-sm text-gray-500 mt-1">園の全保護者に一斉メッセージを送信できます</p>
+              </div>
+
+              {/* 一斉メッセージ作成フォーム */}
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* カテゴリー選択 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">カテゴリー</label>
+                    <select
+                      value={announcementCategory}
+                      onChange={(e) => setAnnouncementCategory(e.target.value as any)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500"
+                    >
+                      <option value="general">一般</option>
+                      <option value="event">行事・イベント</option>
+                      <option value="notice">お知らせ</option>
+                      <option value="schedule">スケジュール</option>
+                      <option value="emergency">緊急</option>
+                    </select>
+                  </div>
+
+                  {/* 重要度選択 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">重要度</label>
+                    <select
+                      value={announcementPriority}
+                      onChange={(e) => setAnnouncementPriority(e.target.value as any)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500"
+                    >
+                      <option value="normal">通常</option>
+                      <option value="high">重要</option>
+                      <option value="urgent">緊急</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* タイトル入力 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">タイトル</label>
+                  <input
+                    type="text"
+                    value={announcementTitle}
+                    onChange={(e) => setAnnouncementTitle(e.target.value)}
+                    placeholder="お知らせのタイトルを入力してください"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500"
+                  />
+                </div>
+
+                {/* 本文入力 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">本文</label>
+                  <textarea
+                    value={announcementContent}
+                    onChange={(e) => setAnnouncementContent(e.target.value)}
+                    placeholder="お知らせの内容を入力してください"
+                    rows={6}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 resize-none"
+                  />
+                </div>
+
+                {/* 送信予定先 */}
+                <div className="bg-pink-50 rounded-xl p-4 border border-pink-200">
+                  <div className="flex items-center space-x-2 text-pink-700">
+                    <Users className="w-5 h-5" />
+                    <span className="font-medium">送信予定先: {children.length}人の保護者</span>
+                  </div>
+                </div>
+
+                {/* 送信ボタン */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={sendAnnouncement}
+                    disabled={sendingAnnouncement || !announcementTitle.trim() || !announcementContent.trim()}
+                    className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-xl hover:from-pink-600 hover:to-orange-600 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200"
+                  >
+                    <Send className="w-5 h-5" />
+                    <span>{sendingAnnouncement ? '送信中...' : '一斉送信'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 送信済みお知らせ一覧 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              <div className="p-6 border-b border-gray-100">
+                <h3 className="text-lg font-bold text-gray-900">送信済みお知らせ</h3>
+                <p className="text-sm text-gray-500 mt-1">過去に送信したお知らせの一覧です</p>
+              </div>
+
+              <div className="p-6">
+                {announcements.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Megaphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">まだお知らせを送信していません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {announcements.map((announcement) => (
+                      <div
+                        key={announcement.id}
+                        className="border border-gray-200 rounded-xl p-4 hover:border-pink-300 transition-all duration-200"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${announcement.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                                announcement.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                {announcement.priority === 'urgent' ? '緊急' :
+                                  announcement.priority === 'high' ? '重要' : '通常'}
+                              </span>
+                              <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded-lg text-xs font-medium">
+                                {announcement.category === 'general' ? '一般' :
+                                  announcement.category === 'event' ? 'イベント' :
+                                    announcement.category === 'notice' ? 'お知らせ' :
+                                      announcement.category === 'schedule' ? 'スケジュール' :
+                                        announcement.category === 'emergency' ? '緊急' : announcement.category}
+                              </span>
+                            </div>
+                            <h4 className="font-semibold text-gray-900 mb-2">{announcement.title}</h4>
+                            <p className="text-gray-600 text-sm leading-relaxed">{announcement.content}</p>
+                            <div className="mt-3 text-xs text-gray-500">
+                              送信日時: {new Date(announcement.created_at).toLocaleString('ja-JP')}
+                              {announcement.sender_facility_user?.display_name &&
+                                ` • 送信者: ${announcement.sender_facility_user.display_name}`
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         );
 

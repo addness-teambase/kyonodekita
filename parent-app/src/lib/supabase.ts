@@ -1,11 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabaseの環境変数 (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY) が設定されていません。');
-}
+// Supabase設定（正しいAPIキーに更新）
+const supabaseUrl = 'https://ognianlobgsqcjpacgqo.supabase.co'
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbmlhbmxvYmdzcWNqcGFjZ3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwNjI5NTUsImV4cCI6MjA2NzYzODk1NX0.ppq_YYElXq7LgsYtJt_tG8IG0-Ch7FYtkxqQ3cQshic'
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 console.log('Supabase client initialized successfully.');
@@ -316,5 +313,119 @@ export const directChatApi = {
             .order('last_message_at', { ascending: false });
 
         return { data, error };
+    }
+};
+
+// 一斉メッセージ機能用のAPI関数
+export const announcementApi = {
+    // 園からの一斉メッセージを取得
+    async getAnnouncements(userId: string) {
+        try {
+            // まず、ユーザーの施設IDを取得
+            const { data: facilityMembership, error: membershipError } = await supabase
+                .from('facility_memberships')
+                .select('facility_id')
+                .eq('user_id', userId)
+                .eq('status', 'active')
+                .single();
+
+            if (membershipError || !facilityMembership) {
+                console.error('施設情報の取得エラー:', membershipError);
+                return { data: [], error: membershipError };
+            }
+
+            // その施設の一斉メッセージを取得
+            const { data: announcements, error } = await supabase
+                .from('announcement_messages')
+                .select(`
+                    *,
+                    sender_facility_user:facility_users!sender_facility_user_id(display_name)
+                `)
+                .eq('facility_id', facilityMembership.facility_id)
+                .eq('is_published', true)
+                .order('published_at', { ascending: false });
+
+            return { data: announcements || [], error };
+        } catch (error) {
+            console.error('一斉メッセージ取得エラー:', error);
+            return { data: [], error };
+        }
+    },
+
+    // 一斉メッセージの既読状態を更新
+    async markAnnouncementAsRead(announcementId: string, userId: string) {
+        try {
+            const { data, error } = await supabase
+                .from('announcement_read_status')
+                .upsert({
+                    announcement_id: announcementId,
+                    user_id: userId,
+                    is_read: true,
+                    read_at: new Date().toISOString()
+                }, {
+                    onConflict: 'announcement_id,user_id'
+                })
+                .select()
+                .single();
+
+            return { data, error };
+        } catch (error) {
+            console.error('既読状態更新エラー:', error);
+            return { data: null, error };
+        }
+    },
+
+    // 未読の一斉メッセージ数を取得
+    async getUnreadAnnouncementsCount(userId: string) {
+        try {
+            // ユーザーの施設IDを取得
+            const { data: facilityMembership, error: membershipError } = await supabase
+                .from('facility_memberships')
+                .select('facility_id')
+                .eq('user_id', userId)
+                .eq('status', 'active')
+                .single();
+
+            if (membershipError || !facilityMembership) {
+                return { count: 0, error: membershipError };
+            }
+
+            // その施設の一斉メッセージの中で未読のものをカウント
+            const { data: announcements, error: announcementsError } = await supabase
+                .from('announcement_messages')
+                .select('id')
+                .eq('facility_id', facilityMembership.facility_id)
+                .eq('is_published', true);
+
+            if (announcementsError || !announcements) {
+                return { count: 0, error: announcementsError };
+            }
+
+            const announcementIds = announcements.map(a => a.id);
+
+            if (announcementIds.length === 0) {
+                return { count: 0, error: null };
+            }
+
+            // 既読状態をチェック
+            const { data: readStatus, error: readError } = await supabase
+                .from('announcement_read_status')
+                .select('announcement_id')
+                .in('announcement_id', announcementIds)
+                .eq('user_id', userId)
+                .eq('is_read', true);
+
+            if (readError) {
+                return { count: 0, error: readError };
+            }
+
+            const readAnnouncementIds = readStatus?.map(r => r.announcement_id) || [];
+            const unreadCount = announcementIds.length - readAnnouncementIds.length;
+
+            return { count: unreadCount, error: null };
+        } catch (error) {
+            console.error('未読お知らせ数取得エラー:', error);
+            return { count: 0, error };
+        }
     }
 }; 

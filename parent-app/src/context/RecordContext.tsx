@@ -1,12 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { format, isSameDay, startOfToday } from 'date-fns';
-import { GoogleGenAI } from '@google/genai';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-
-const ai = new GoogleGenAI({
-    apiKey: import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyCklSsHsyaIBBBALgKBheLWcqNuaY6FO2A'
-});
 
 // カテゴリータイプの定義
 export type RecordCategory = 'achievement' | 'happy' | 'failure' | 'trouble';
@@ -22,11 +17,15 @@ export interface RecordEvent {
 
 export interface CalendarEvent {
     id: string;
-    childId: string;
+    childId?: string; // 園全体予定の場合はundefined
     date: string;
     title: string;
     time?: string;
     description?: string;
+    is_facility_wide?: boolean; // 園全体の予定かどうか
+    priority?: 'normal' | 'high';
+    type?: string;
+    facility_user_id?: string; // 管理者が作成した場合
 }
 
 export interface ChildInfo {
@@ -203,7 +202,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 setRecordEvents(recordsList);
             }
 
-            // カレンダーイベントの読み込み
+            // カレンダーイベントの読み込み（個人予定）
             const { data: calendarEvents, error: calendarError } = await supabase
                 .from('calendar_events')
                 .select('*')
@@ -212,17 +211,55 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
 
             if (calendarError) {
                 console.error('カレンダーデータの読み込みエラー:', calendarError);
-            } else if (calendarEvents) {
-                const calendarList = calendarEvents.map(event => ({
-                    id: event.id,
-                    childId: event.child_id,
-                    date: event.date,
-                    title: event.title,
-                    time: stripSeconds(event.time),
-                    description: event.description && event.description.trim() !== '' ? event.description.trim() : null
-                }));
-                setCalendarEvents(calendarList);
             }
+
+            // 園全体の共有予定を取得
+            const facilityIds = [...new Set(facilityChildrenData?.map(item => item.facility_id).filter(Boolean) || [])];
+            let facilityEvents: any[] = [];
+
+            if (facilityIds.length > 0) {
+                const { data: facilityEventsData, error: facilityEventsError } = await supabase
+                    .from('calendar_events')
+                    .select('*')
+                    .in('facility_id', facilityIds)
+                    .eq('is_facility_wide', true)
+                    .order('date', { ascending: true });
+
+                if (facilityEventsError) {
+                    console.error('園共有予定読み込みエラー:', facilityEventsError);
+                } else {
+                    facilityEvents = facilityEventsData || [];
+                }
+            }
+
+            // 個人予定と園共有予定を統合
+            const personalEvents = calendarEvents?.map(event => ({
+                id: event.id,
+                childId: event.child_id,
+                date: event.date,
+                title: event.title,
+                time: stripSeconds(event.time),
+                description: event.description && event.description.trim() !== '' ? event.description.trim() : null,
+                is_facility_wide: false,
+                priority: event.priority,
+                type: event.type
+            })) || [];
+
+            const facilityEventsList = facilityEvents.map(event => ({
+                id: event.id,
+                childId: undefined, // 園全体予定なので子供IDはundefined
+                date: event.date,
+                title: `🏫 ${event.title}`, // 園の予定であることを示すアイコン
+                time: stripSeconds(event.time),
+                description: event.description && event.description.trim() !== '' ? event.description.trim() : null,
+                is_facility_wide: true,
+                priority: event.priority,
+                type: event.type,
+                facility_user_id: event.facility_user_id
+            }));
+
+            const allEvents = [...personalEvents, ...facilityEventsList];
+            setCalendarEvents(allEvents);
 
             // 成長記録の読み込み
             const { data: growthRecords, error: growthError } = await supabase
@@ -688,9 +725,70 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     };
 
     const addChild = async (name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<string> => {
-        // 保護者による子供登録は無効化されました
-        // 管理者が登録した子供情報のみ使用可能です
-        throw new Error('子供の登録は管理者によってのみ可能です。施設にお問い合わせください。');
+        if (!user) {
+            throw new Error('ログインが必要です。');
+        }
+
+        try {
+            console.log('👶 子供登録開始:', {
+                name,
+                age,
+                birthdate,
+                gender,
+                hasAvatar: !!avatarImage
+            });
+
+            // Supabaseに子供データを登録
+            const { data: newChild, error } = await supabase
+                .from('children')
+                .insert({
+                    user_id: user.id,
+                    name: name,
+                    age: age,
+                    birthdate: birthdate,
+                    gender: gender,
+                    avatar_image: avatarImage
+                })
+                .select('id, name, age, birthdate, gender, avatar_image, created_at, updated_at')
+                .single();
+
+            if (error) {
+                console.error('Supabase子供登録エラー:', error);
+                throw new Error('子供の登録に失敗しました。もう一度お試しください。');
+            }
+
+            if (newChild) {
+                // ローカル状態を更新
+                const childInfo: ChildInfo = {
+                    id: newChild.id,
+                    name: newChild.name,
+                    age: newChild.age,
+                    birthdate: newChild.birthdate || '',
+                    gender: newChild.gender as 'male' | 'female' | undefined,
+                    avatarImage: newChild.avatar_image || undefined,
+                    createdAt: new Date(newChild.created_at),
+                    updatedAt: new Date(newChild.updated_at)
+                };
+
+                setChildren(prev => [...prev, childInfo]);
+
+                console.log('👶 子供登録成功:', {
+                    id: newChild.id,
+                    name: newChild.name,
+                    hasAvatar: !!newChild.avatar_image
+                });
+
+                return newChild.id;
+            }
+
+            throw new Error('登録データの作成に失敗しました。');
+        } catch (error) {
+            console.error('子供登録エラー:', error);
+            if (error instanceof Error) {
+                throw error;
+            }
+            throw new Error('子供の登録に失敗しました。');
+        }
     };
 
     const updateChildInfo = async (id: string, name: string, age: number, birthdate?: string, gender?: 'male' | 'female', avatarImage?: string): Promise<void> => {
@@ -841,39 +939,58 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     );
 };
 
-// その他のユーティリティ関数はそのまま維持
-export const getMotivationalMessage = async (events: RecordEvent[]): Promise<string> => {
-    try {
-        const eventSummary = events.map(event =>
-            `${getCategoryNameStatic(event.category)}: ${event.note}`
-        ).join('\n');
+// 個人の成長記録に基づいたメッセージ生成
+export const getPersonalizedRecordMessage = (events: RecordEvent[], childInfo?: any): string => {
+    if (events.length === 0) return '';
 
-        const prompt = `
-以下の子供の記録を見て、温かく励ますメッセージを日本語で書いてください。
-記録: ${eventSummary}
+    const childName = childInfo?.name || 'お子さま';
 
-要件:
-- 100文字以内
-- 子供が読んでも分かりやすい言葉
-- ポジティブで励ます内容
-- 成長を認める内容
-`;
+    // カテゴリー別の分析
+    const categoryCounts = events.reduce((acc, event) => {
+        acc[event.category] = (acc[event.category] || 0) + 1;
+        return acc;
+    }, {} as Record<RecordCategory, number>);
 
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                thinkingConfig: {
-                    thinkingBudget: 0, // Disables thinking
-                },
-            }
-        });
+    // 主要なカテゴリーを特定
+    const mainCategory = Object.entries(categoryCounts)
+        .sort(([, a], [, b]) => b - a)[0]?.[0] as RecordCategory;
 
-        return response.text || defaultMessage(events);
-    } catch (error) {
-        console.error('AI メッセージ生成エラー:', error);
-        return defaultMessage(events);
+    // カテゴリーに応じたメッセージ
+    const categoryMessages = {
+        achievement: [
+            `${childName}のがんばりがすごいね！`,
+            `${childName}ができることがふえたね✨`,
+            `${childName}のチャレンジがすばらしい！`
+        ],
+        happy: [
+            `${childName}のうれしそうなかおがみえるよ😊`,
+            `${childName}がたのしそうでよかったね♪`,
+            `${childName}のえがおがすてき！`
+        ],
+        failure: [
+            `${childName}もがんばったね！つぎもチャレンジしよう`,
+            `${childName}のきもち、よくわかるよ。だいじょうぶ！`,
+            `${childName}はいつもがんばってるね💪`
+        ],
+        trouble: [
+            `${childName}のこまったきもち、きいてるよ`,
+            `${childName}といっしょにかんがえよう`,
+            `${childName}はひとりじゃないよ、だいじょうぶ`
+        ]
+    };
+
+    const messageList = categoryMessages[mainCategory] || categoryMessages.achievement;
+    const message = messageList[Math.floor(Math.random() * messageList.length)];
+
+    // 記録数に応じた追加メッセージ
+    let additionalMessage = '';
+    if (events.length >= 3) {
+        additionalMessage = ' きょうもたくさんきろくしてくれてありがとう！';
+    } else if (events.length === 1) {
+        additionalMessage = ' きろくしてくれてありがとう！';
     }
+
+    return message + additionalMessage;
 };
 
 const defaultMessage = (events: RecordEvent[]): string => {
@@ -896,22 +1013,66 @@ const getCategoryNameStatic = (category: RecordCategory): string => {
     return names[category];
 };
 
-export const generateDiarySummary = async (events: RecordEvent[]): Promise<string> => {
+// 個人の成長記録に基づいた日記サマリー生成
+export const generatePersonalizedDiarySummary = (events: RecordEvent[], childInfo?: any): string => {
     if (events.length === 0) {
-        return 'まだ記録がありません。';
+        return `${childInfo?.name || 'お子さま'}の今日の記録
+
+まだ記録がありません。今日の「できたこと」や「うれしかったこと」があったら、ぜひ記録してみてくださいね！`;
     }
 
-    try {
-        // 実装を簡略化
-        return defaultSummary(events);
-    } catch (error) {
-        return defaultSummary(events);
+    const childName = childInfo?.name || 'お子さま';
+
+    // カテゴリー別に記録を分類
+    const eventsByCategory = events.reduce((acc, event) => {
+        if (!acc[event.category]) acc[event.category] = [];
+        acc[event.category].push(event);
+        return acc;
+    }, {} as Record<RecordCategory, RecordEvent[]>);
+
+    let summary = `${childName}の今日の記録\n\n`;
+
+    // 良かった記録から先に表示
+    if (eventsByCategory.achievement) {
+        summary += `✨ ${childName}ができたこと\n`;
+        eventsByCategory.achievement.forEach(event => {
+            summary += `• ${event.note}\n`;
+        });
+        summary += '\n';
     }
-};
 
-const defaultSummary = (events: RecordEvent[]): string => {
-    const formatEvent = (event: RecordEvent) =>
-        `${getCategoryNameStatic(event.category)}: ${event.note}`;
+    if (eventsByCategory.happy) {
+        summary += `😊 ${childName}がうれしかったこと\n`;
+        eventsByCategory.happy.forEach(event => {
+            summary += `• ${event.note}\n`;
+        });
+        summary += '\n';
+    }
 
-    return events.map(formatEvent).join('\n');
+    // 困ったことも成長の記録として表示
+    if (eventsByCategory.failure) {
+        summary += `💪 ${childName}がチャレンジしたこと\n`;
+        eventsByCategory.failure.forEach(event => {
+            summary += `• ${event.note}\n`;
+        });
+        summary += '\n';
+    }
+
+    if (eventsByCategory.trouble) {
+        summary += `💭 ${childName}がかんがえたこと\n`;
+        eventsByCategory.trouble.forEach(event => {
+            summary += `• ${event.note}\n`;
+        });
+        summary += '\n';
+    }
+
+    // 成長メッセージを追加
+    const totalEvents = events.length;
+    if (totalEvents >= 3) {
+        summary += `🌟 今日は${totalEvents}個のことを記録しました。たくさんの成長がありましたね！`;
+    } else {
+        summary += `🌟 ${childName}の成長の記録、ありがとうございました！`;
+    }
+
+    return summary;
 }; 

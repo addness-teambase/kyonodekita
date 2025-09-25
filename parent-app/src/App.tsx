@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck, TrendingUp, Heart } from 'lucide-react';
+import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck, TrendingUp, Heart, Bell, ChevronRight, Megaphone, LogOut } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { RecordProvider, useRecord, RecordCategory } from './context/RecordContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import RecordButton from './components/RecordButton';
 import GrowthRecords from './components/GrowthRecords';
 import { compressImage } from './utils/imageUtils';
-import { directChatApi } from './lib/supabase';
+import { directChatApi, announcementApi } from './lib/supabase';
 
 import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
@@ -140,7 +140,142 @@ function AppContent() {
   const [isParentSettingsOpen, setIsParentSettingsOpen] = useState(false);
   const [parentName, setParentName] = useState(user?.username || '');
 
+  // 一斉メッセージ関連
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [unreadAnnouncementsCount, setUnreadAnnouncementsCount] = useState(0);
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<any>(null);
 
+  // ダイレクトチャット関連（早期定義）
+  const [chatType, setChatType] = useState<'ai' | 'direct'>('ai');
+  const [directChatUnreadCount, setDirectChatUnreadCount] = useState(0);
+  const [directChatSessions, setDirectChatSessions] = useState<DirectChatSession[]>([]);
+  const [currentDirectSession, setCurrentDirectSession] = useState<string | null>(null);
+  const [directMessage, setDirectMessage] = useState('');
+  const [isMarkingDirectChatRead, setIsMarkingDirectChatRead] = useState(false);
+
+  // 一斉メッセージを取得
+  const loadAnnouncements = async () => {
+    if (!user?.id) return;
+
+    try {
+      const { data, error } = await announcementApi.getAnnouncements(user.id);
+      if (error) {
+        console.error('お知らせ取得エラー:', error);
+        return;
+      }
+      setAnnouncements(data || []);
+    } catch (error) {
+      console.error('お知らせ取得エラー:', error);
+    }
+  };
+
+  // 未読メッセージ数を取得
+  const loadUnreadAnnouncementsCount = async () => {
+    if (!user?.id) return;
+
+    try {
+      const { count, error } = await announcementApi.getUnreadAnnouncementsCount(user.id);
+      if (error) {
+        console.error('未読お知らせ数取得エラー:', error);
+        return;
+      }
+      setUnreadAnnouncementsCount(count || 0);
+    } catch (error) {
+      console.error('未読お知らせ数取得エラー:', error);
+    }
+  };
+
+  // お知らせを既読にする
+  const markAnnouncementAsRead = async (announcementId: string) => {
+    if (!user?.id) return;
+
+    try {
+      const { error } = await announcementApi.markAnnouncementAsRead(announcementId, user.id);
+      if (error) {
+        console.error('既読状態更新エラー:', error);
+        return;
+      }
+      // 未読数を再取得
+      await loadUnreadAnnouncementsCount();
+    } catch (error) {
+      console.error('既読状態更新エラー:', error);
+    }
+  };
+
+  // お知らせ詳細を表示
+  const showAnnouncementDetail = (announcement: any) => {
+    setSelectedAnnouncement(announcement);
+    setShowAnnouncementModal(true);
+    // 既読にする
+    markAnnouncementAsRead(announcement.id);
+  };
+
+  // ダイレクトチャットの未読数を取得
+  const loadDirectChatUnreadCount = async () => {
+    if (!user?.id || !activeChildId || !currentDirectSession) {
+      setDirectChatUnreadCount(0);
+      return;
+    }
+
+    try {
+      const { count, error } = await directChatApi.getUnreadCount(currentDirectSession, user.id);
+      if (error) {
+        console.error('ダイレクトチャット未読数取得エラー:', error);
+        return;
+      }
+      setDirectChatUnreadCount(count || 0);
+    } catch (error) {
+      console.error('ダイレクトチャット未読数取得エラー:', error);
+    }
+  };
+
+  // ダイレクトチャットメッセージを既読にする
+  const markDirectChatAsRead = async () => {
+    if (!user?.id || !currentDirectSession || isMarkingDirectChatRead) return;
+
+    try {
+      setIsMarkingDirectChatRead(true);
+      const { error } = await directChatApi.markMessagesAsRead(currentDirectSession, user.id);
+      if (error) {
+        console.error('ダイレクトチャット既読状態更新エラー:', error);
+        return;
+      }
+      // 未読数を再取得
+      await loadDirectChatUnreadCount();
+    } catch (error) {
+      console.error('ダイレクトチャット既読状態更新エラー:', error);
+    } finally {
+      setIsMarkingDirectChatRead(false);
+    }
+  };
+
+
+
+  // 一斉メッセージを初期化時に読み込む
+  useEffect(() => {
+    if (user?.id) {
+      loadAnnouncements();
+      loadUnreadAnnouncementsCount();
+    }
+  }, [user?.id]);
+
+  // ダイレクトチャット未読数を取得
+  useEffect(() => {
+    if (user?.id && activeChildId && currentDirectSession) {
+      loadDirectChatUnreadCount();
+    } else {
+      setDirectChatUnreadCount(0);
+    }
+  }, [user?.id, activeChildId, currentDirectSession]);
+
+
+  // チャットタブを開いた時に既読状態にする
+  useEffect(() => {
+    if (activeTab === 'chat' && chatType === 'direct' && directChatUnreadCount > 0 && !isMarkingDirectChatRead) {
+      markDirectChatAsRead();
+    }
+  }, [activeTab, chatType, directChatUnreadCount, isMarkingDirectChatRead]);
 
   // 編集する子供が変わったときにフォームを更新
   useEffect(() => {
@@ -362,11 +497,6 @@ function AppContent() {
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
 
-  // 直接チャット用の状態
-  const [chatType, setChatType] = useState<'ai' | 'direct'>('ai');
-  const [directChatSessions, setDirectChatSessions] = useState<DirectChatSession[]>([]);
-  const [currentDirectSession, setCurrentDirectSession] = useState<string | null>(null);
-  const [directMessage, setDirectMessage] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -450,6 +580,9 @@ function AppContent() {
       });
 
       setCurrentDirectSession(conversation.id);
+
+      // 未読数を取得
+      setTimeout(() => loadDirectChatUnreadCount(), 100);
     } catch (error) {
       console.error('チャット開始エラー:', error);
       alert('チャットの開始に失敗しました。');
@@ -458,7 +591,17 @@ function AppContent() {
 
   // 直接メッセージ送信
   const handleSendDirectMessage = async () => {
-    if (!directMessage.trim() || !currentDirectSession || !user || !activeChildId) return;
+    if (!directMessage.trim() || !user || !activeChildId) return;
+
+    // セッションがない場合は自動的に作成
+    if (!currentDirectSession) {
+      await handleStartDirectChat();
+      // セッション作成後、まだセッションがない場合は処理を中止
+      if (!currentDirectSession) {
+        console.error('セッションの作成に失敗しました');
+        return;
+      }
+    }
 
     try {
       // メッセージを送信
@@ -494,6 +637,9 @@ function AppContent() {
       );
 
       setDirectMessage('');
+
+      // 未読数を更新（相手からのメッセージがある可能性があるため）
+      await loadDirectChatUnreadCount();
     } catch (error) {
       console.error('メッセージ送信エラー:', error);
       alert('メッセージの送信に失敗しました。');
@@ -520,6 +666,20 @@ function AppContent() {
       }
     }
   }, [activeTab, user, activeChildId, currentSessionId, chatSessions.length]);
+
+  // ダイレクトチャットタブを開いた時に自動的にチャットを開始
+  useEffect(() => {
+    if (activeTab === 'chat' && chatType === 'direct' && user && activeChildId && !currentDirectSession) {
+      console.log('🔧 ダイレクトチャット自動開始:', {
+        activeTab,
+        chatType,
+        hasUser: !!user,
+        hasActiveChildId: !!activeChildId,
+        currentDirectSession
+      });
+      handleStartDirectChat();
+    }
+  }, [activeTab, chatType, user, activeChildId, currentDirectSession]);
 
   // カテゴリー選択と同時に記録モーダルを開く関数
   const handleCategorySelect = (category: RecordCategory) => {
@@ -800,7 +960,17 @@ ${userMessage}
 
     } catch (error) {
       console.error('AI応答生成エラー:', error);
-      // フォールバック応答
+
+      // レート制限エラーの特別対応
+      if (error && (error.toString().includes('Quota exceeded') || error.toString().includes('RATE_LIMIT_EXCEEDED') || error.toString().includes('429'))) {
+        return `🤖 AI先生は今、他の保護者さまとお話し中です。
+
+📞 **お急ぎの場合は「園と連絡」から直接先生へご相談ください**
+
+⏰ AI相談は少し時間をおいてから再度お試しください。大切なお話、必ずお聞かせいただきたいと思います。`;
+      }
+
+      // 通常のエラー時フォールバック応答
       const fallbackResponses = [
         `なるほど、詳しく教えていただいてありがとうございます。その時の${childInfo?.name}${getChildSuffix(childInfo?.gender)}の表情や反応はどうでしたか？`,
         `そうですね、よく観察されていますね。その場面で、${childInfo?.name}${getChildSuffix(childInfo?.gender)}は何か特別な様子を見せていましたか？`,
@@ -934,6 +1104,34 @@ ${userMessage}
       case 'home':
         return (
           <div className="flex flex-col items-center space-y-4">
+            {/* 園からのお知らせバナー */}
+            {unreadAnnouncementsCount > 0 && (
+              <div className="w-full bg-gradient-to-r from-orange-50 to-pink-50 rounded-2xl shadow-sm border border-orange-200 p-4 cursor-pointer"
+                onClick={() => {
+                  if (announcements.length > 0) {
+                    showAnnouncementDetail(announcements[0]);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-400 flex items-center justify-center">
+                      <Bell className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-orange-800">
+                        園からお知らせが届いています
+                      </p>
+                      <p className="text-xs text-orange-600">
+                        未読 {unreadAnnouncementsCount}件
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-orange-600" />
+                </div>
+              </div>
+            )}
+
             {/* 今日のできたことヘッダー - シンプル版 */}
             <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               {childInfo && (
@@ -1561,90 +1759,70 @@ ${userMessage}
 
                 {/* チャット表示エリア - スクロール可能 */}
                 <div className="flex-1 min-h-0 mb-4">
-                  {currentDirectSession ? (
-                    /* 既存のチャット画面 */
-                    <>
-                      <div className="h-full bg-gradient-to-b from-orange-50/50 to-white overflow-hidden rounded-2xl border border-gray-100">
-                        <div className="h-full overflow-y-auto px-4 py-4 space-y-6 pb-20" ref={chatScrollContainerRef}>
-                          {directChatSessions.find(s => s.id === currentDirectSession)?.messages.map((msg, index) => (
-                            <div key={index} className={`w-full ${msg.sender === 'parent' ? 'flex justify-end' : ''}`}>
-                              <div className={`max-w-3xl w-full ${msg.sender === 'parent' ? 'pl-8' : 'pr-8'}`}>
-                                <div className={`group relative ${msg.sender === 'parent' ? 'ml-auto' : ''}`}>
-                                  <div className="flex items-start space-x-3">
-                                    {msg.sender !== 'parent' && (
-                                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                        <MessageSquare className="w-4 h-4 text-white" />
-                                      </div>
-                                    )}
-
-                                    <div className={`flex-1 ${msg.sender === 'parent' ? 'text-right' : ''}`}>
-                                      <div className={`${msg.sender !== 'parent'
-                                        ? 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm'
-                                        : 'bg-orange-500 text-white rounded-2xl rounded-tr-sm shadow-sm ml-auto max-w-2xl'
-                                        } px-4 py-3 inline-block`}>
-                                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                          {msg.content}
-                                        </div>
-                                      </div>
-                                      <p className={`text-xs text-gray-400 mt-2 ${msg.sender === 'parent' ? 'text-right mr-2' : 'ml-2'}`}>
-                                        {new Date(msg.timestamp).toLocaleTimeString('ja-JP', {
-                                          hour: '2-digit',
-                                          minute: '2-digit'
-                                        })}
-                                      </p>
+                  {/* 常にチャット画面を表示 */}
+                  <>
+                    <div className="h-full bg-gradient-to-b from-orange-50/50 to-white overflow-hidden rounded-2xl border border-gray-100">
+                      <div className="h-full overflow-y-auto px-4 py-4 space-y-6 pb-20" ref={chatScrollContainerRef}>
+                        {currentDirectSession && directChatSessions.find(s => s.id === currentDirectSession)?.messages.map((msg, index) => (
+                          <div key={index} className={`w-full ${msg.sender === 'parent' ? 'flex justify-end' : ''}`}>
+                            <div className={`max-w-3xl w-full ${msg.sender === 'parent' ? 'pl-8' : 'pr-8'}`}>
+                              <div className={`group relative ${msg.sender === 'parent' ? 'ml-auto' : ''}`}>
+                                <div className="flex items-start space-x-3">
+                                  {msg.sender !== 'parent' && (
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                      <MessageSquare className="w-4 h-4 text-white" />
                                     </div>
+                                  )}
 
-                                    {msg.sender === 'parent' && (
-                                      <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                        <User size={14} className="text-white" />
+                                  <div className={`flex-1 ${msg.sender === 'parent' ? 'text-right' : ''}`}>
+                                    <div className={`${msg.sender !== 'parent'
+                                      ? 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm'
+                                      : 'bg-orange-500 text-white rounded-2xl rounded-tr-sm shadow-sm ml-auto max-w-2xl'
+                                      } px-4 py-3 inline-block`}>
+                                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                        {msg.content}
                                       </div>
-                                    )}
+                                    </div>
+                                    <p className={`text-xs text-gray-400 mt-2 ${msg.sender === 'parent' ? 'text-right mr-2' : 'ml-2'}`}>
+                                      {new Date(msg.timestamp).toLocaleTimeString('ja-JP', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </p>
                                   </div>
+
+                                  {msg.sender === 'parent' && (
+                                    <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                      <User size={14} className="text-white" />
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          </div>
+                        ))}
 
-                          {/* スクロール用の空白 */}
-                          <div className="h-4"></div>
-                          <div ref={messagesEndRef} />
-                        </div>
-                      </div>
-
-                    </>
-                  ) : (
-                    /* チャット開始画面 */
-                    <div className="h-full flex items-center justify-center">
-                      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mx-auto mb-6">
-                          <MessageSquare className="w-8 h-8 text-orange-600" />
-                        </div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-3">
-                          園の先生と連絡
-                        </h3>
-                        <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                          {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}について園の先生とメッセージのやり取りができます` : '園の先生とメッセージのやり取りができます'}
-                        </p>
-
-                        {childInfo ? (
-                          <button
-                            onClick={handleStartDirectChat}
-                            className="w-full bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-bold py-4 px-6 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
-                            style={{ WebkitTapHighlightColor: 'transparent' }}
-                          >
-                            <MessageSquare className="w-5 h-5 inline-block mr-2" />
-                            チャットを開始
-                          </button>
-                        ) : (
-                          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                            <p className="text-sm text-gray-600">
-                              まずはお子さまを選択してください
-                            </p>
+                        {/* メッセージがない場合の表示 */}
+                        {(!currentDirectSession || !directChatSessions.find(s => s.id === currentDirectSession)?.messages.length) && (
+                          <div className="h-full flex items-center justify-center">
+                            <div className="text-center">
+                              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-100 to-yellow-100 flex items-center justify-center mx-auto mb-4">
+                                <MessageSquare className="w-6 h-6 text-orange-600" />
+                              </div>
+                              <p className="text-gray-500 text-sm">
+                                {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}について園の先生とメッセージをやり取りしましょう` : '園の先生とメッセージをやり取りしましょう'}
+                              </p>
+                            </div>
                           </div>
                         )}
+
+                        {/* スクロール用の空白 */}
+                        <div className="h-4"></div>
+                        <div ref={messagesEndRef} />
                       </div>
                     </div>
-                  )}
+
+                  </>
                 </div>
 
                 {/* メッセージ入力エリア - 常に固定表示 */}
@@ -1654,15 +1832,13 @@ ${userMessage}
                       type="text"
                       value={directMessage}
                       onChange={(e) => setDirectMessage(e.target.value)}
-                      placeholder={currentDirectSession ? "園の先生にメッセージを送信..." : "まずチャットを開始してください"}
+                      placeholder="園の先生にメッセージを送信..."
                       className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-300 text-sm resize-none transition-all duration-200"
                       onKeyPress={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          if (currentDirectSession) {
+                          if (directMessage.trim()) {
                             handleSendDirectMessage();
-                          } else {
-                            handleStartDirectChat();
                           }
                         }
                       }}
@@ -1670,12 +1846,12 @@ ${userMessage}
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     />
                     <button
-                      onClick={currentDirectSession ? handleSendDirectMessage : handleStartDirectChat}
-                      disabled={!childInfo || (currentDirectSession && !directMessage.trim())}
+                      onClick={handleSendDirectMessage}
+                      disabled={!childInfo || !directMessage.trim()}
                       className="p-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-2xl hover:from-orange-600 hover:to-yellow-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
-                      {currentDirectSession ? <Send className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                      <Send className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
@@ -2012,6 +2188,7 @@ ${userMessage}
       <BottomNavigationBar
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        chatUnreadCount={directChatUnreadCount}
       />
 
       {/* ログアウト確認ダイアログ */}
@@ -2389,6 +2566,76 @@ ${userMessage}
           </Dialog.Panel>
         </div>
       </Dialog>
+
+      {/* お知らせ詳細モーダル */}
+      <Dialog open={showAnnouncementModal} onClose={() => setShowAnnouncementModal(false)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/40" aria-hidden="true" />
+
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <Dialog.Title className="text-lg font-bold text-gray-900 flex items-center">
+                <Megaphone className="w-5 h-5 text-orange-500 mr-2" />
+                園からのお知らせ
+              </Dialog.Title>
+              <button
+                onClick={() => setShowAnnouncementModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {selectedAnnouncement && (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${selectedAnnouncement.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                    selectedAnnouncement.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                    {selectedAnnouncement.priority === 'urgent' ? '緊急' :
+                      selectedAnnouncement.priority === 'high' ? '重要' : '通常'}
+                  </span>
+                  <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded-lg text-xs font-medium">
+                    {selectedAnnouncement.category === 'general' ? '一般' :
+                      selectedAnnouncement.category === 'event' ? 'イベント' :
+                        selectedAnnouncement.category === 'notice' ? 'お知らせ' :
+                          selectedAnnouncement.category === 'schedule' ? 'スケジュール' :
+                            selectedAnnouncement.category === 'emergency' ? '緊急' : selectedAnnouncement.category}
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">{selectedAnnouncement.title}</h3>
+                  <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {selectedAnnouncement.content}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
+                    📅 送信日時: {new Date(selectedAnnouncement.created_at).toLocaleString('ja-JP')}
+                  </p>
+                  {selectedAnnouncement.sender_facility_user?.display_name && (
+                    <p className="text-sm text-gray-500">
+                      👨‍🏫 送信者: {selectedAnnouncement.sender_facility_user.display_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowAnnouncementModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -2440,8 +2687,10 @@ function InitialChildSetup() {
         age,
         birthdate: childBirthdate,
         gender: childGender,
-        hasAvatar: !!childAvatarImage
+        hasAvatar: !!childAvatarImage,
+        avatarSize: childAvatarImage ? childAvatarImage.length : 0
       });
+
       const newChildId = await addChild(
         childName.trim(),
         age,
@@ -2449,10 +2698,27 @@ function InitialChildSetup() {
         childGender,
         childAvatarImage || undefined
       );
-      console.log('👶 新しい子供ID:', newChildId);
+
+      console.log('👶 子供登録完了:', {
+        id: newChildId,
+        name: childName.trim(),
+        withPhoto: !!childAvatarImage
+      });
+
       setActiveChildId(newChildId);
     } catch (error) {
-      console.error('子供情報の登録に失敗しました:', error);
+      console.error('子供情報の登録エラー:', error);
+
+      let errorMessage = '子供の登録に失敗しました。';
+      if (error instanceof Error) {
+        if (error.message.includes('avatar_image')) {
+          errorMessage = '写真のアップロードに失敗しました。写真のサイズを確認して再度お試しください。';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -2693,12 +2959,28 @@ function InitialChildSetup() {
 
 // お子さま情報待機画面（管理者による設定待ち）
 function WaitingForChildSetup() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    setShowLogoutConfirm(false);
+  };
 
   return (
     <div className="full-screen-container bg-gradient-to-b from-pink-50 to-purple-50 flex items-center justify-center mobile-safe-padding">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-xl p-8 border border-purple-100 text-center">
+        <div className="bg-white rounded-3xl shadow-xl p-8 border border-purple-100 text-center relative">
+          {/* ログアウトボタン（右上） */}
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="absolute top-4 right-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+            title="ログアウト"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
+
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-orange-400 to-pink-500 text-white rounded-full mb-6">
             <UserCheck className="w-8 h-8" />
           </div>
@@ -2722,7 +3004,7 @@ function WaitingForChildSetup() {
             <p><strong>ログイン中:</strong> {user?.display_name || user?.username}</p>
           </div>
 
-          <div className="text-xs text-orange-500 bg-orange-100 p-3 rounded-lg">
+          <div className="text-xs text-orange-500 bg-orange-100 p-3 rounded-lg mb-4">
             <p><strong>💡 設定完了後にご利用いただけます：</strong></p>
             <ul className="mt-1 space-y-1 text-left list-disc list-inside">
               <li>お子さまの成長記録を作成</li>
@@ -2731,8 +3013,25 @@ function WaitingForChildSetup() {
               <li>園の先生との連絡</li>
             </ul>
           </div>
+
+          {/* ログアウトボタン（下部） */}
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full py-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <LogOut className="w-4 h-4" />
+            ログアウト
+          </button>
         </div>
       </div>
+
+      {/* ログアウト確認ダイアログ */}
+      <LogoutConfirmDialog
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={handleLogout}
+      />
     </div>
   );
 }

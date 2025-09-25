@@ -4,11 +4,13 @@ import { Home, MessageSquare, Edit, Calendar, TrendingUp } from 'lucide-react';
 interface BottomNavigationBarProps {
     activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth';
     onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'growth') => void;
+    chatUnreadCount?: number;
 }
 
 const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
     activeTab,
-    onTabChange
+    onTabChange,
+    chatUnreadCount = 0
 }) => {
     return (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-100 flex justify-around items-center h-24 px-4 z-40 shadow-lg pb-2">
@@ -78,16 +80,21 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
 
             <button
                 onClick={() => onTabChange('chat')}
-                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'chat'
+                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 relative ${activeTab === 'chat'
                     ? 'text-pink-500'
                     : 'text-gray-400 hover:text-gray-600'
                     }`}
             >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${activeTab === 'chat'
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 relative ${activeTab === 'chat'
                     ? 'bg-pink-100'
                     : 'hover:bg-gray-50'
                     }`}>
                     <MessageSquare size={20} />
+                    {chatUnreadCount > 0 && (
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold shadow-sm">
+                            {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+                        </div>
+                    )}
                 </div>
                 <span className="text-xs mt-1 font-medium">チャット</span>
             </button>
