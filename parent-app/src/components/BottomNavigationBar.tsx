@@ -1,9 +1,9 @@
 import React from 'react';
-import { Home, MessageSquare, Edit, Calendar, TrendingUp, Building2 } from 'lucide-react';
+import { Home, MessageSquare, Edit, Calendar, TrendingUp, ClipboardList } from 'lucide-react';
 
 interface BottomNavigationBarProps {
-    activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility';
-    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility') => void;
+    activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records';
+    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records') => void;
     chatUnreadCount?: number;
 }
 
@@ -63,6 +63,22 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
             </button>
 
             <button
+                onClick={() => onTabChange('facility_records')}
+                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'facility_records'
+                    ? 'text-blue-500'
+                    : 'text-gray-400 hover:text-gray-600'
+                    }`}
+            >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${activeTab === 'facility_records'
+                    ? 'bg-blue-100'
+                    : 'hover:bg-gray-50'
+                    }`}>
+                    <ClipboardList size={20} />
+                </div>
+                <span className="text-xs mt-1 font-medium">園の記録</span>
+            </button>
+
+            <button
                 onClick={() => onTabChange('growth')}
                 className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'growth'
                     ? 'text-pink-500'
@@ -76,22 +92,6 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
                     <TrendingUp size={20} />
                 </div>
                 <span className="text-xs mt-1 font-medium">成長</span>
-            </button>
-
-            <button
-                onClick={() => onTabChange('facility')}
-                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'facility'
-                    ? 'text-pink-500'
-                    : 'text-gray-400 hover:text-gray-600'
-                    }`}
-            >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${activeTab === 'facility'
-                    ? 'bg-pink-100'
-                    : 'hover:bg-gray-50'
-                    }`}>
-                    <Building2 size={20} />
-                </div>
-                <span className="text-xs mt-1 font-medium">施設記録</span>
             </button>
 
             <button

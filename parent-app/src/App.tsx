@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck, TrendingUp, Heart, Bell, ChevronRight, Megaphone, LogOut } from 'lucide-react';
+import { Award, Smile, X, AlertTriangle, User, Users, Settings, Clock, PlusCircle, AlertCircle, HelpCircle, Trash2, Send, MessageSquare, Plus, History, MoreVertical, UserCheck, TrendingUp, Heart, Bell, ChevronRight, Megaphone, LogOut, ClipboardList, Calendar } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import { RecordProvider, useRecord, RecordCategory } from './context/RecordContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -127,7 +127,11 @@ function AppContent() {
   const { user, logout, updateUser } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records'>('home');
+  
+  // 施設からの記録関連
+  const [facilityRecords, setFacilityRecords] = useState<any[]>([]);
+  const [loadingFacilityRecords, setLoadingFacilityRecords] = useState(false);
   const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'monthly'>('month');
   const [isChildSettingsOpen, setIsChildSettingsOpen] = useState(false);
   const [childName, setChildName] = useState('');
@@ -154,12 +158,38 @@ function AppContent() {
   const [directMessage, setDirectMessage] = useState('');
   const [isMarkingDirectChatRead, setIsMarkingDirectChatRead] = useState(false);
 
-  // 施設からの記録関連
-  const [facilityRecords, setFacilityRecords] = useState<any[]>([]);
-  const [selectedFacilityRecord, setSelectedFacilityRecord] = useState<any | null>(null);
-  const [showFacilityRecordDetail, setShowFacilityRecordDetail] = useState(false);
-  const [facilityRecordViewMode, setFacilityRecordViewMode] = useState<'calendar' | 'list'>('calendar');
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  // 施設からの出席記録を取得
+  const loadFacilityRecords = async () => {
+    if (!user?.id || !activeChildId) {
+      setFacilityRecords([]);
+      return;
+    }
+
+    setLoadingFacilityRecords(true);
+    try {
+      console.log('🔍 施設の出席記録を取得中...', { user_id: user.id, child_id: activeChildId });
+
+      const { data, error } = await supabase
+        .from('attendance_schedules')
+        .select('*')
+        .eq('child_id', activeChildId)
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.error('❌ 施設記録取得エラー:', error);
+        setFacilityRecords([]);
+        return;
+      }
+
+      console.log(`✅ 施設記録取得成功: ${data?.length || 0}件`);
+      setFacilityRecords(data || []);
+    } catch (error) {
+      console.error('❌ 施設記録取得エラー:', error);
+      setFacilityRecords([]);
+    } finally {
+      setLoadingFacilityRecords(false);
+    }
+  };
 
   // 一斉メッセージを取得
   const loadAnnouncements = async () => {
@@ -218,37 +248,6 @@ function AppContent() {
     markAnnouncementAsRead(announcement.id);
   };
 
-  // 施設からの出席記録を取得
-  const loadFacilityRecords = async () => {
-    if (!user?.id || !activeChildId) return;
-
-    try {
-      console.log('🔍 施設からの記録を取得中...', { userId: user.id, childId: activeChildId });
-      
-      const { data, error } = await supabase
-        .from('attendance_schedules')
-        .select('*')
-        .eq('child_id', activeChildId)
-        .order('date', { ascending: false });
-
-      if (error) {
-        console.error('❌ 施設記録取得エラー:', error);
-        return;
-      }
-
-      console.log('✅ 施設からの記録取得成功:', data?.length || 0, '件');
-      setFacilityRecords(data || []);
-    } catch (error) {
-      console.error('❌ 施設記録取得エラー:', error);
-    }
-  };
-
-  // 記録詳細を表示
-  const showFacilityRecordDetails = (record: any) => {
-    setSelectedFacilityRecord(record);
-    setShowFacilityRecordDetail(true);
-  };
-
   // ダイレクトチャットの未読数を取得
   const loadDirectChatUnreadCount = async () => {
     if (!user?.id || !activeChildId || !currentDirectSession) {
@@ -300,51 +299,10 @@ function AppContent() {
 
   // 施設からの記録を読み込む
   useEffect(() => {
-    if (user?.id && activeChildId && activeTab === 'facility') {
+    if (activeTab === 'facility_records' && user?.id && activeChildId) {
       loadFacilityRecords();
     }
-  }, [user?.id, activeChildId, activeTab]);
-
-  // リアルタイム連動：施設記録の自動更新
-  useEffect(() => {
-    if (!user?.id || !activeChildId) return;
-
-    console.log('🔄 施設記録リアルタイム連動を開始');
-
-    // attendance_schedulesテーブルの変更を監視
-    const attendanceSubscription = supabase
-      .channel('parent-attendance-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // INSERT, UPDATE, DELETE すべてを監視
-          schema: 'public',
-          table: 'attendance_schedules',
-          filter: `child_id=eq.${activeChildId}`
-        },
-        (payload) => {
-          console.log('✨✨✨ 施設記録が更新されました（リアルタイム）:', payload.eventType, payload.new || payload.old);
-          // 施設記録を即座に再取得
-          loadFacilityRecords().catch(error => {
-            console.warn('施設記録自動更新エラー:', error);
-          });
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 施設記録テーブル接続状態:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ 施設記録のリアルタイム連動が正常に開始されました');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ 施設記録のリアルタイム連動でエラーが発生しました');
-        }
-      });
-
-    // クリーンアップ
-    return () => {
-      console.log('🛑 施設記録リアルタイム連動を停止');
-      attendanceSubscription.unsubscribe();
-    };
-  }, [user?.id, activeChildId]);
+  }, [activeTab, user?.id, activeChildId]);
 
   // ダイレクトチャット未読数を取得
   useEffect(() => {
@@ -2167,217 +2125,148 @@ ${userMessage}
         );
       case 'growth':
         return <GrowthRecords />;
-      case 'facility':
+      case 'facility_records':
         return (
-          <div className="space-y-4">
+          <div className="flex flex-col h-screen">
             {/* ヘッダー */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mr-3">
-                    <span className="text-2xl">🏫</span>
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-800">施設からの記録</h2>
-                    <p className="text-sm text-gray-500">
-                      {childInfo ? `${childInfo.name}${getChildSuffix(childInfo.gender)}の活動記録` : '活動記録'}
-                    </p>
-                  </div>
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 shadow-lg flex-shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                  <ClipboardList className="w-6 h-6" />
                 </div>
-              </div>
-
-              {/* 表示切替ボタン */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFacilityRecordViewMode('calendar')}
-                  className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all ${
-                    facilityRecordViewMode === 'calendar'
-                      ? 'bg-blue-500 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  📅 カレンダー
-                </button>
-                <button
-                  onClick={() => setFacilityRecordViewMode('list')}
-                  className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all ${
-                    facilityRecordViewMode === 'list'
-                      ? 'bg-blue-500 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  📋 リスト
-                </button>
+                <div>
+                  <h1 className="text-2xl font-bold">園からの記録</h1>
+                  <p className="text-blue-100 text-sm">
+                    {childInfo ? `${childInfo.name}${childInfo.gender === 'male' ? 'くん' : 'ちゃん'}の活動記録` : '活動記録'}
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* 統計情報 */}
-            {facilityRecords.length > 0 && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                  <div className="text-xs text-gray-500 mb-1">総記録数</div>
-                  <div className="text-2xl font-bold text-blue-600">{facilityRecords.length}</div>
-                  <div className="text-xs text-gray-400">件</div>
-                </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                  <div className="text-xs text-gray-500 mb-1">今月</div>
-                  <div className="text-2xl font-bold text-green-600">
-                    {facilityRecords.filter(r => {
-                      const recordDate = new Date(r.date);
-                      const now = new Date();
-                      return recordDate.getMonth() === now.getMonth() && recordDate.getFullYear() === now.getFullYear();
-                    }).length}
+            {/* コンテンツ */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-gray-50">
+              {loadingFacilityRecords ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-500">読み込み中...</p>
                   </div>
-                  <div className="text-xs text-gray-400">件</div>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                  <div className="text-xs text-gray-500 mb-1">今週</div>
-                  <div className="text-2xl font-bold text-orange-600">
-                    {facilityRecords.filter(r => {
-                      const recordDate = new Date(r.date);
-                      const now = new Date();
-                      const weekStart = new Date(now);
-                      weekStart.setDate(now.getDate() - now.getDay());
-                      return recordDate >= weekStart && recordDate <= now;
-                    }).length}
-                  </div>
-                  <div className="text-xs text-gray-400">件</div>
-                </div>
-              </div>
-            )}
-
-            {/* カレンダー表示 */}
-            {facilityRecordViewMode === 'calendar' ? (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                {/* 月選択 */}
-                <div className="flex items-center justify-between mb-4">
-                  <button
-                    onClick={() => {
-                      const newDate = new Date(selectedMonth);
-                      newDate.setMonth(newDate.getMonth() - 1);
-                      setSelectedMonth(newDate);
-                    }}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    ←
-                  </button>
-                  <h3 className="text-lg font-bold">
-                    {selectedMonth.getFullYear()}年{selectedMonth.getMonth() + 1}月
-                  </button>
-                  <button
-                    onClick={() => {
-                      const newDate = new Date(selectedMonth);
-                      newDate.setMonth(newDate.getMonth() + 1);
-                      setSelectedMonth(newDate);
-                    }}
-                    className="p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    →
-                  </button>
-                </div>
-
-                {/* カレンダーグリッド */}
-                <div className="grid grid-cols-7 gap-2 mb-2">
-                  {['日', '月', '火', '水', '木', '金', '土'].map((day) => (
-                    <div key={day} className="text-center text-xs font-semibold text-gray-500 py-2">
-                      {day}
+              ) : facilityRecords.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <ClipboardList className="w-8 h-8 text-blue-500" />
                     </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {(() => {
-                    const year = selectedMonth.getFullYear();
-                    const month = selectedMonth.getMonth();
-                    const firstDay = new Date(year, month, 1).getDay();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const days = [];
-
-                    // 空白セル
-                    for (let i = 0; i < firstDay; i++) {
-                      days.push(<div key={`empty-${i}`} className="aspect-square"></div>);
-                    }
-
-                    // 日付セル
-                    for (let day = 1; day <= daysInMonth; day++) {
-                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const hasRecord = facilityRecords.some(r => r.date === dateStr);
-                      const record = facilityRecords.find(r => r.date === dateStr);
-
-                      days.push(
-                        <button
-                          key={day}
-                          onClick={() => record && showFacilityRecordDetails(record)}
-                          className={`aspect-square rounded-lg text-sm flex flex-col items-center justify-center transition-all ${
-                            hasRecord
-                              ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-md'
-                              : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                          }`}
-                        >
-                          <span className="font-semibold">{day}</span>
-                          {hasRecord && <span className="text-xs">✓</span>}
-                        </button>
-                      );
-                    }
-
-                    return days;
-                  })()}
-                </div>
-              </div>
-            ) : (
-              /* リスト表示 */
-              <div className="space-y-3">
-                {facilityRecords.length === 0 ? (
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
-                    <div className="text-gray-400 text-5xl mb-4">📝</div>
-                    <p className="text-gray-500 text-sm">まだ記録がありません</p>
-                    <p className="text-gray-400 text-xs mt-2">施設で記録が追加されると、ここに表示されます</p>
+                    <p className="text-gray-500 mb-2">まだ記録がありません</p>
+                    <p className="text-sm text-gray-400">園から記録が追加されると、ここに表示されます</p>
                   </div>
-                ) : (
-                  facilityRecords.map((record) => (
-                    <button
-                      key={record.id}
-                      onClick={() => showFacilityRecordDetails(record)}
-                      className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all text-left"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center">
-                          <span className="text-2xl mr-2">📅</span>
-                          <div>
-                            <div className="font-semibold text-gray-800">
-                              {new Date(record.date).toLocaleDateString('ja-JP', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                weekday: 'short'
-                              })}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {record.actual_arrival_time && `登園: ${record.actual_arrival_time}`}
-                              {record.actual_departure_time && ` / 降園: ${record.actual_departure_time}`}
-                            </div>
-                          </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {facilityRecords.map((record) => (
+                    <div key={record.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                      {/* 日付 */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="w-5 h-5 text-blue-500" />
+                          <span className="font-semibold text-gray-800">
+                            {new Date(record.date).toLocaleDateString('ja-JP', { 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric',
+                              weekday: 'short'
+                            })}
+                          </span>
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           record.attendance_status === 'present' ? 'bg-green-100 text-green-700' :
                           record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
+                          record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
                           {record.attendance_status === 'present' ? '出席' :
                            record.attendance_status === 'absent' ? '欠席' :
-                           record.attendance_status === 'late' ? '遅刻' : '予定'}
+                           record.attendance_status === 'late' ? '遅刻' :
+                           record.attendance_status === 'early_departure' ? '早退' :
+                           '予定'}
                         </span>
                       </div>
-                      {record.notes && (
-                        <p className="text-sm text-gray-600 line-clamp-2 mt-2">
-                          {record.notes}
-                        </p>
+
+                      {/* 時間 */}
+                      {(record.actual_arrival_time || record.actual_departure_time) && (
+                        <div className="bg-blue-50 rounded-xl p-3 mb-4">
+                          <div className="flex items-center justify-between text-sm">
+                            {record.actual_arrival_time && (
+                              <div className="flex items-center space-x-2">
+                                <span className="text-blue-600 font-medium">登園</span>
+                                <span className="text-gray-700">{record.actual_arrival_time}</span>
+                              </div>
+                            )}
+                            {record.actual_departure_time && (
+                              <div className="flex items-center space-x-2">
+                                <span className="text-blue-600 font-medium">降園</span>
+                                <span className="text-gray-700">{record.actual_departure_time}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
+
+                      {/* 記録内容 */}
+                      {record.notes && (
+                        <div className="space-y-3">
+                          <div className="prose prose-sm max-w-none">
+                            <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                              {record.notes}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 気分・食事記録 */}
+                      {(record.mood_rating || record.lunch_status || record.snack_status) && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-3">
+                            {record.mood_rating && (
+                              <div className="flex items-center space-x-2 bg-yellow-50 px-3 py-2 rounded-lg">
+                                <span className="text-yellow-600">😊</span>
+                                <span className="text-sm text-gray-700">
+                                  機嫌: {record.mood_rating}/5
+                                </span>
+                              </div>
+                            )}
+                            {record.lunch_status && (
+                              <div className="flex items-center space-x-2 bg-orange-50 px-3 py-2 rounded-lg">
+                                <span className="text-orange-600">🍱</span>
+                                <span className="text-sm text-gray-700">
+                                  給食: {record.lunch_status}
+                                </span>
+                              </div>
+                            )}
+                            {record.snack_status && (
+                              <div className="flex items-center space-x-2 bg-pink-50 px-3 py-2 rounded-lg">
+                                <span className="text-pink-600">🍪</span>
+                                <span className="text-sm text-gray-700">
+                                  おやつ: {record.snack_status}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 記録者 */}
+                      {record.created_by_name && (
+                        <div className="mt-4 text-xs text-gray-400 text-right">
+                          記録者: {record.created_by_name}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         );
       default:
@@ -2863,112 +2752,6 @@ ${userMessage}
                 保存
               </button>
             </div>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* 施設記録詳細モーダル */}
-      <Dialog open={showFacilityRecordDetail} onClose={() => setShowFacilityRecordDetail(false)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            {selectedFacilityRecord && (
-              <>
-                <Dialog.Title className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                  <span className="text-blue-500 mr-2">🏫</span>
-                  {new Date(selectedFacilityRecord.date).toLocaleDateString('ja-JP', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    weekday: 'long'
-                  })}
-                </Dialog.Title>
-
-                <div className="space-y-4">
-                  {/* 出席状況 */}
-                  <div className="bg-blue-50 rounded-xl p-4">
-                    <div className="text-sm text-gray-600 mb-2">出席状況</div>
-                    <div className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      selectedFacilityRecord.attendance_status === 'present' ? 'bg-green-500 text-white' :
-                      selectedFacilityRecord.attendance_status === 'absent' ? 'bg-red-500 text-white' :
-                      'bg-gray-500 text-white'
-                    }`}>
-                      {selectedFacilityRecord.attendance_status === 'present' ? '✓ 出席' :
-                       selectedFacilityRecord.attendance_status === 'absent' ? '✗ 欠席' :
-                       selectedFacilityRecord.attendance_status === 'late' ? '⏰ 遅刻' : '予定'}
-                    </div>
-                  </div>
-
-                  {/* 時間情報 */}
-                  {(selectedFacilityRecord.actual_arrival_time || selectedFacilityRecord.actual_departure_time) && (
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="text-sm text-gray-600 mb-2">利用時間</div>
-                      <div className="space-y-2">
-                        {selectedFacilityRecord.actual_arrival_time && (
-                          <div className="flex items-center text-sm">
-                            <span className="text-gray-600 mr-2">登園:</span>
-                            <span className="font-medium">{selectedFacilityRecord.actual_arrival_time}</span>
-                          </div>
-                        )}
-                        {selectedFacilityRecord.actual_departure_time && (
-                          <div className="flex items-center text-sm">
-                            <span className="text-gray-600 mr-2">降園:</span>
-                            <span className="font-medium">{selectedFacilityRecord.actual_departure_time}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 記録内容 */}
-                  {selectedFacilityRecord.notes && (
-                    <div className="bg-white rounded-xl p-4 border border-gray-200">
-                      <div className="text-sm text-gray-600 mb-2">活動記録</div>
-                      <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                        {selectedFacilityRecord.notes}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 食事記録 */}
-                  {(selectedFacilityRecord.lunch_status || selectedFacilityRecord.snack_status) && (
-                    <div className="bg-yellow-50 rounded-xl p-4">
-                      <div className="text-sm text-gray-600 mb-2">食事</div>
-                      <div className="space-y-2">
-                        {selectedFacilityRecord.lunch_status && (
-                          <div className="flex items-center text-sm">
-                            <span className="text-gray-600 mr-2">🍱 昼食:</span>
-                            <span className="font-medium">{selectedFacilityRecord.lunch_status}</span>
-                          </div>
-                        )}
-                        {selectedFacilityRecord.snack_status && (
-                          <div className="flex items-center text-sm">
-                            <span className="text-gray-600 mr-2">🍪 おやつ:</span>
-                            <span className="font-medium">{selectedFacilityRecord.snack_status}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 記録者情報 */}
-                  {selectedFacilityRecord.created_by_name && (
-                    <div className="text-xs text-gray-500 text-right">
-                      記録者: {selectedFacilityRecord.created_by_name}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6">
-                  <button
-                    onClick={() => setShowFacilityRecordDetail(false)}
-                    className="w-full py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium"
-                  >
-                    閉じる
-                  </button>
-                </div>
-              </>
-            )}
           </Dialog.Panel>
         </div>
       </Dialog>
