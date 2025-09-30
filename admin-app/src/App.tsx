@@ -22,11 +22,15 @@ import {
   BookOpen,
   Heart,
   Trash2,
-  Megaphone
+  Megaphone,
+  ChevronLeft
 } from 'lucide-react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import CalendarView from './components/CalendarView';
+import LogoutConfirmDialog from './components/LogoutConfirmDialog';
 import { supabase } from './lib/supabase';
 
 // 初回設定モーダルコンポーネント
@@ -201,6 +205,9 @@ interface ChildData {
   avatar: string;
   birthdate: string;
   gender: 'male' | 'female';
+  // 保護者ログイン情報
+  parentUsername?: string;
+  parentPassword?: string;
   // 発達障害関連の詳細項目
   hasSupportLimitManagement?: boolean;
   supportCertificateExpiry?: string;
@@ -245,6 +252,8 @@ const App: React.FC = () => {
   const [selectedChildForRecords, setSelectedChildForRecords] = useState<string | null>(null);
   const [recordsFilter, setRecordsFilter] = useState<'all' | 'achievement' | 'happy' | 'failure' | 'trouble'>('all');
   const [recordsSearchQuery, setRecordsSearchQuery] = useState('');
+  const [recordsViewMode, setRecordsViewMode] = useState<'daily' | 'weekly' | 'monthly'>('daily'); // デフォルト：日次
+  const [recordsSelectedDate, setRecordsSelectedDate] = useState<Date>(new Date()); // 選択された日付
 
   // 一斉メッセージ関連
   const [announcementTitle, setAnnouncementTitle] = useState('');
@@ -302,6 +311,7 @@ const App: React.FC = () => {
   });
   const [isEditingFacility, setIsEditingFacility] = useState(false);
   const [tempFacilityInfo, setTempFacilityInfo] = useState(facilityInfo);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // 設定情報を初期化
   useEffect(() => {
@@ -391,29 +401,11 @@ const App: React.FC = () => {
         adminId: user.id
       });
 
-      // 管理者の施設に関連する子供データのみを取得
+      // 管理者の施設に関連する子供データのみを取得（JOINエラーを避ける）
       const { data: facilityChildrenData, error } = await supabase
         .from('facility_children')
-        .select(`
-          *,
-          children (
-            id,
-            name,
-            age,
-            birthdate,
-            gender,
-            avatar_image,
-            created_at,
-            updated_at
-          ),
-          users!facility_children_parent_user_id_fkey (
-            id,
-            username,
-            display_name,
-            email
-          )
-        `)
-        .eq('facility_id', targetFacilityId)  // 管理者固有の施設IDを使用
+        .select('*')
+        .eq('facility_id', targetFacilityId)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
@@ -424,29 +416,104 @@ const App: React.FC = () => {
       });
 
       if (error) {
-        console.error('子供データの取得エラー:', error);
+        console.error('❌ facility_children取得エラー:', error);
+        // エラーでも空配列を設定して処理を続行
+        setChildren([]);
+        setStats({
+          totalChildren: 0,
+          activeToday: 0,
+          totalRecords: 0,
+          unreadMessages: 0
+        });
         return;
       }
 
-      // 子供データを変換
-      const processedChildren: ChildData[] = (facilityChildrenData || [])
-        .filter(item => item.children) // null チェック
-        .map(item => ({
-          id: item.children.id,
-          name: item.children.name,
-          age: item.children.age,
-          parentName: item.users?.display_name || item.users?.username || '',
-          parentEmail: item.users?.email || '',
-          lastActivity: item.children.updated_at,
-          unreadMessages: 0, // 実際の未読メッセージ数は別途取得が必要
-          todayRecords: 0, // 今日の記録数は別途計算が必要
-          status: 'active' as const,
-          avatar: item.children.name?.charAt(0)?.toUpperCase() || '?',
-          birthdate: item.children.birthdate || '',
-          gender: item.children.gender || 'female'
-        }));
+      // facility_childrenデータが空の場合
+      if (!facilityChildrenData || facilityChildrenData.length === 0) {
+        console.log('⚠️ この施設には園児データがまだありません');
+        setChildren([]);
+        setStats({
+          totalChildren: 0,
+          activeToday: 0,
+          totalRecords: 0,
+          unreadMessages: 0
+        });
+        return;
+      }
+
+      // 子供データを個別に取得・変換
+      const processedChildren: ChildData[] = [];
+
+      for (const facilityChild of facilityChildrenData || []) {
+        try {
+          // 子供の基本情報を取得
+          const { data: childData, error: childError } = await supabase
+            .from('children')
+            .select('*')
+            .eq('id', facilityChild.child_id)
+            .single();
+
+          if (childError || !childData) {
+            console.warn('子供データ取得スキップ:', facilityChild.child_id);
+            continue;
+          }
+
+          // 保護者情報を取得（ログイン情報を含む）
+          let parentName = '保護者';
+          let parentEmail = '';
+          let parentUsername = '';
+          let parentPassword = '';
+
+          if (facilityChild.parent_user_id) {
+            try {
+              // 基本情報のみを取得（plain_passwordは取得しない）
+              const { data: parentData, error: parentError } = await supabase
+                .from('users')
+                .select('display_name, username, email')
+                .eq('id', facilityChild.parent_user_id)
+                .maybeSingle();
+
+              if (parentError) {
+                console.warn('⚠️ 保護者情報取得エラー:', parentError.message);
+              } else if (parentData) {
+                parentName = parentData.display_name || parentData.username || '保護者';
+                parentEmail = parentData.email || '';
+                parentUsername = parentData.username || '';
+                // パスワードは暗号化されているため表示しない
+                parentPassword = '（パスワードは暗号化されています）';
+              }
+            } catch (parentFetchError) {
+              console.warn('⚠️ 保護者情報取得エラー（例外）:', parentFetchError);
+            }
+          }
+
+          processedChildren.push({
+            id: childData.id,
+            name: childData.name,
+            age: childData.age,
+            parentName,
+            parentEmail,
+            parentUsername,
+            parentPassword,
+            lastActivity: childData.updated_at,
+            unreadMessages: 0,
+            todayRecords: 0,
+            status: 'active' as const,
+            avatar: childData.name?.charAt(0)?.toUpperCase() || '?',
+            birthdate: childData.birthdate || '',
+            gender: childData.gender || 'female'
+          });
+        } catch (childProcessError) {
+          console.warn('子供データ処理エラー:', facilityChild.child_id, childProcessError);
+        }
+      }
 
       setChildren(processedChildren);
+
+      console.log('✅ 子供データ設定完了:', {
+        count: processedChildren.length,
+        childIds: processedChildren.map(c => ({ id: c.id, name: c.name }))
+      });
 
       // 統計データも更新
       setStats({
@@ -565,76 +632,194 @@ const App: React.FC = () => {
     if (!user) return;
 
     try {
+      console.log('🔍 成長記録の取得を開始します...');
+
       // 管理者の施設IDを取得
       const facilityId = user.facility_id || await getOrCreateAdminFacilityId();
       if (!facilityId) {
         console.warn('施設IDが見つかりません - 成長記録取得をスキップ');
         return;
       }
+      console.log('✅ 施設ID:', facilityId);
 
-      // 該当施設の子供たちのIDを取得
-      const facilityChildren = children.map(child => child.id);
-      if (facilityChildren.length === 0) {
-        console.log('子供のデータが存在しません');
+      // この施設に関連する子供のIDを取得
+      console.log('🔍 施設に関連する子供を取得中...');
+      const { data: facilityChildrenData, error: facilityChildrenError } = await supabase
+        .from('facility_children')
+        .select('child_id')
+        .eq('facility_id', facilityId)
+        .eq('status', 'active');
+
+      if (facilityChildrenError) {
+        console.error('❌ facility_children取得エラー:', facilityChildrenError.message);
+        return;
+      }
+
+      const childIds = facilityChildrenData?.map(fc => fc.child_id) || [];
+      console.log(`✅ 施設に関連する子供: ${childIds.length}人`, childIds);
+
+      if (childIds.length === 0) {
+        console.warn('⚠️ この施設にはまだ子供が登録されていません');
         setGrowthRecords([]);
         return;
       }
 
-      // 成長記録（records テーブル）を取得
-      const { data: records, error } = await supabase
+      // 1. recordsテーブルから「できた・嬉しい・できなかった・困った」を取得
+      // facility_idでフィルタ OR child_idでフィルタ（過去のデータも取得）
+      console.log('🔍 recordsテーブルから取得中...');
+      const { data: records, error: recordsError } = await supabase
         .from('records')
-        .select(`
-          id,
-          child_id,
-          user_id,
-          category,
-          note,
-          timestamp,
-          created_at,
-          children!inner (
-            id,
-            name,
-            age,
-            gender,
-            guardian_name
-          ),
-          users (
-            display_name,
-            full_name
-          )
-        `)
-        .in('child_id', facilityChildren)
+        .select('id, child_id, user_id, category, note, timestamp, created_at, facility_id')
+        .in('child_id', childIds)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.warn('成長記録取得エラー:', error);
-        return;
+      if (recordsError) {
+        console.error('❌ records取得エラー:', recordsError.message);
       }
 
-      // データを整形
-      const formattedRecords = records?.map(record => {
-        // 現在のchildrenデータからparent名を取得
-        const child = children.find(c => c.id === record.child_id);
-        const parentName = child?.parentName || record.children?.guardian_name || '不明';
+      console.log('✅ 取得したrecords数:', records?.length || 0);
+      if (records && records.length > 0) {
+        console.log('📋 recordsサンプル（最初の3件）:', records.slice(0, 3).map(r => ({
+          id: r.id,
+          child_id: r.child_id,
+          category: r.category,
+          note: r.note?.substring(0, 30),
+          facility_id: r.facility_id,
+          created_at: r.created_at
+        })));
+      }
 
-        return {
-          id: record.id,
-          childId: record.child_id,
-          childName: record.children.name,
-          childAge: record.children.age,
-          parentName: parentName,
-          authorName: record.users?.display_name || record.users?.full_name || parentName,
-          category: record.category,
-          note: record.note,
-          timestamp: record.timestamp || record.created_at,
-          createdAt: record.created_at
-        };
-      }) || [];
+      // 2. growth_recordsテーブルから写真付き成長記録を取得
+      // child_idでフィルタ（過去のデータも取得）
+      console.log('🔍 growth_recordsテーブルから取得中...');
+      const { data: growthRecordsData, error: growthRecordsError } = await supabase
+        .from('growth_records')
+        .select('id, child_id, user_id, title, description, category, date, created_at, media_type, media_data, facility_id')
+        .in('child_id', childIds)
+        .order('created_at', { ascending: false });
+
+      if (growthRecordsError) {
+        console.error('❌ growth_records取得エラー:', growthRecordsError.message);
+      }
+
+      console.log('✅ 取得したgrowth_records数:', growthRecordsData?.length || 0);
+      if (growthRecordsData && growthRecordsData.length > 0) {
+        console.log('📋 growth_recordsサンプル（最初の3件）:', growthRecordsData.slice(0, 3).map(gr => ({
+          id: gr.id,
+          child_id: gr.child_id,
+          title: gr.title,
+          category: gr.category,
+          facility_id: gr.facility_id,
+          created_at: gr.created_at
+        })));
+      }
+
+      // データを整形（子供情報は既存のchildrenから取得）
+      const formattedRecords = [];
+
+      // recordsテーブルのデータを整形
+      for (const record of records || []) {
+        try {
+          // 子供情報を取得（メモリ内のchildrenまたはDBから）
+          let childName = '不明';
+          let childAge = 0;
+          let parentName = '保護者';
+
+          const child = children.find(c => c.id === record.child_id);
+          if (child) {
+            childName = child.name;
+            childAge = child.age;
+            parentName = child.parentName;
+          } else {
+            // メモリにない場合はDBから取得
+            const { data: childData } = await supabase
+              .from('children')
+              .select('name, age')
+              .eq('id', record.child_id)
+              .maybeSingle();
+
+            if (childData) {
+              childName = childData.name || '不明';
+              childAge = childData.age || 0;
+            }
+          }
+
+          formattedRecords.push({
+            id: record.id,
+            childId: record.child_id,
+            childName,
+            childAge,
+            parentName,
+            category: record.category,
+            note: record.note,
+            timestamp: record.timestamp || record.created_at,
+            createdAt: record.created_at,
+            source: 'records'
+          });
+        } catch (recordProcessError) {
+          console.warn('⚠️ 記録処理エラー:', record.id, recordProcessError);
+        }
+      }
+
+      // growth_recordsテーブルのデータを整形して追加
+      for (const growthRecord of growthRecordsData || []) {
+        try {
+          // 子供情報を取得（メモリ内のchildrenまたはDBから）
+          let childName = '不明';
+          let childAge = 0;
+          let parentName = '保護者';
+
+          const child = children.find(c => c.id === growthRecord.child_id);
+          if (child) {
+            childName = child.name;
+            childAge = child.age;
+            parentName = child.parentName;
+          } else {
+            // メモリにない場合はDBから取得
+            const { data: childData } = await supabase
+              .from('children')
+              .select('name, age')
+              .eq('id', growthRecord.child_id)
+              .maybeSingle();
+
+            if (childData) {
+              childName = childData.name || '不明';
+              childAge = childData.age || 0;
+            }
+          }
+
+          // growth_recordsのカテゴリをrecordsのカテゴリにマッピング
+          const mappedCategory = growthRecord.category === 'achievement' ? 'achievement' : 'happy';
+
+          formattedRecords.push({
+            id: growthRecord.id,
+            childId: growthRecord.child_id,
+            childName,
+            childAge,
+            parentName,
+            category: mappedCategory,
+            note: `${growthRecord.title}${growthRecord.description ? '\n' + growthRecord.description : ''}${growthRecord.media_type ? '\n📷 写真付き' : ''}`,
+            timestamp: growthRecord.created_at,
+            createdAt: growthRecord.created_at,
+            source: 'growth_records',
+            hasMedia: !!growthRecord.media_type
+          });
+        } catch (growthRecordProcessError) {
+          console.warn('⚠️ 成長記録処理エラー:', growthRecord.id, growthRecordProcessError);
+        }
+      }
+
+      // 作成日時でソート（新しい順）
+      formattedRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       setGrowthRecords(formattedRecords);
-      console.log(`📊 成長記録取得完了: ${formattedRecords.length}件`);
+      console.log(`📊 成長記録取得完了: ${formattedRecords.length}件 (records: ${records?.length || 0}件 + growth_records: ${growthRecordsData?.length || 0}件)`);
+
+      if (formattedRecords.length > 0) {
+        console.log('📋 成長記録サンプル:', formattedRecords.slice(0, 2));
+      }
     } catch (error) {
-      console.warn('成長記録取得エラー:', error);
+      console.error('成長記録取得エラー:', error);
       setGrowthRecords([]);
     }
   };
@@ -769,31 +954,27 @@ const App: React.FC = () => {
   // 送信済み一斉メッセージを取得
   const loadAnnouncements = async () => {
     try {
-      const { data: facilityUser, error: facilityUserError } = await supabase
-        .from('facility_users')
-        .select('facility_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (facilityUserError || !facilityUser) return;
+      // 施設IDを取得
+      const facilityId = await getOrCreateAdminFacilityId();
+      if (!facilityId) {
+        console.warn('施設IDが見つかりません');
+        return;
+      }
 
       const { data, error } = await supabase
         .from('announcement_messages')
-        .select(`
-          *,
-          sender_facility_user:facility_users!sender_facility_user_id(display_name)
-        `)
-        .eq('facility_id', facilityUser.facility_id)
+        .select('*')
+        .eq('facility_id', facilityId)
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('お知らせ取得エラー:', error);
+        console.error('❌ お知らせ取得エラー:', error);
         return;
       }
 
       setAnnouncements(data || []);
     } catch (error) {
-      console.error('エラー:', error);
+      console.error('❌ お知らせ取得エラー:', error);
     }
   };
 
@@ -807,27 +988,116 @@ const App: React.FC = () => {
   // 初回設定が完了したらデータを取得
   useEffect(() => {
     if (user && !showFirstTimeSetup) {
-      fetchChildren();
-      // 全メッセージを取得
-      fetchAllMessages().catch(error => {
-        console.warn('全メッセージ取得失敗:', error);
-      });
-      // 成長記録を取得
-      fetchGrowthRecords().catch(error => {
-        console.warn('成長記録取得失敗:', error);
-      });
-      // 未読メッセージ数を安全に取得
-      fetchUnreadMessagesCount().catch(error => {
-        console.warn('初期未読数取得失敗:', error);
-      });
-      // 送信済み一斉メッセージを取得
-      loadAnnouncements().catch(error => {
-        console.warn('お知らせ取得失敗:', error);
-      });
+      const loadData = async () => {
+        // まず子供データを取得
+        await fetchChildren();
+
+        // 子供データ取得後に依存する処理を実行
+        fetchAllMessages().catch(error => {
+          console.warn('全メッセージ取得失敗:', error);
+        });
+
+        // 成長記録を取得（子供データに依存）
+        await fetchGrowthRecords().catch(error => {
+          console.warn('成長記録取得失敗:', error);
+        });
+
+        fetchUnreadMessagesCount().catch(error => {
+          console.warn('初期未読数取得失敗:', error);
+        });
+
+        loadAnnouncements().catch(error => {
+          console.warn('お知らせ取得失敗:', error);
+        });
+      };
+
+      loadData();
     }
   }, [user, showFirstTimeSetup]);
 
-  // 定期的に未読メッセージ数を更新（リアルタイム機能）
+  // リアルタイム連動：成長記録の自動更新（Supabase Realtime）
+  useEffect(() => {
+    if (!user || showFirstTimeSetup) return;
+
+    console.log('🔄 成長記録リアルタイム連動を開始');
+
+    // recordsテーブルの変更を監視（保護者の記録）- すべてのイベントを監視
+    const recordsSubscription = supabase
+      .channel('admin-records-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE すべてを監視
+          schema: 'public',
+          table: 'records'
+        },
+        (payload) => {
+          console.log('✨✨✨ 記録が変更されました（リアルタイム）:', payload.eventType, payload.new || payload.old);
+          // 成長記録を即座に再取得
+          fetchGrowthRecords().catch(error => {
+            console.warn('記録自動更新エラー:', error);
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 recordsテーブル接続状態:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ recordsテーブルのリアルタイム連動が正常に開始されました');
+          // 接続成功後、すぐに過去のデータを取得
+          console.log('🔄 過去のデータを含めて成長記録を取得中...');
+          fetchGrowthRecords().catch(error => {
+            console.warn('初回データ取得エラー:', error);
+          });
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ recordsテーブルのリアルタイム連動でエラーが発生しました');
+        }
+      });
+
+    // growth_recordsテーブルの変更を監視（写真付き成長記録）- すべてのイベントを監視
+    const growthRecordsSubscription = supabase
+      .channel('admin-growth-records-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE すべてを監視
+          schema: 'public',
+          table: 'growth_records'
+        },
+        (payload) => {
+          console.log('✨✨✨ 成長記録（写真付き）が変更されました（リアルタイム）:', payload.eventType, payload.new || payload.old);
+          // 成長記録を即座に再取得
+          fetchGrowthRecords().catch(error => {
+            console.warn('成長記録自動更新エラー:', error);
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 growth_recordsテーブル接続状態:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ growth_recordsテーブルのリアルタイム連動が正常に開始されました');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ growth_recordsテーブルのリアルタイム連動でエラーが発生しました');
+        }
+      });
+
+    // 定期的にデータを再取得（バックアップ）
+    const pollingInterval = setInterval(() => {
+      console.log('🔄 定期更新: 成長記録を再取得');
+      fetchGrowthRecords().catch(error => {
+        console.warn('定期更新エラー:', error);
+      });
+    }, 30000); // 30秒ごと
+
+    // クリーンアップ：コンポーネントのアンマウント時にサブスクリプションを解除
+    return () => {
+      console.log('🛑 リアルタイム連動を停止');
+      recordsSubscription.unsubscribe();
+      growthRecordsSubscription.unsubscribe();
+      clearInterval(pollingInterval);
+    };
+  }, [user, showFirstTimeSetup]);
+
+  // 定期的に未読メッセージ数を更新（バックアップとして30秒ごと）
   useEffect(() => {
     if (!user || showFirstTimeSetup) return;
 
@@ -1347,6 +1617,7 @@ const App: React.FC = () => {
     try {
       setLoading(true);
 
+      // 園児情報を更新
       const { data: updatedChild, error } = await supabase
         .from('children')
         .update({
@@ -1367,6 +1638,52 @@ const App: React.FC = () => {
       }
 
       console.log('園児更新成功:', updatedChild);
+
+      // 保護者のログイン情報が変更されている場合は更新
+      if (editingChild.parentUsername || editingChild.parentPassword) {
+        // 親ユーザーIDを取得
+        const facilityId = await getOrCreateAdminFacilityId();
+        const { data: facilityChildData } = await supabase
+          .from('facility_children')
+          .select('parent_user_id')
+          .eq('child_id', editingChild.id)
+          .eq('facility_id', facilityId)
+          .single();
+
+        if (facilityChildData?.parent_user_id) {
+          const updateData: any = {
+            display_name: editingChild.parentName,
+            email: editingChild.parentEmail || null,
+            updated_at: new Date().toISOString()
+          };
+
+          // ユーザー名が変更されている場合
+          if (editingChild.parentUsername) {
+            updateData.username = editingChild.parentUsername;
+          }
+
+          // パスワードが変更されている場合（6文字以上の場合のみ）
+          if (editingChild.parentPassword &&
+            editingChild.parentPassword.length >= 6 &&
+            editingChild.parentPassword !== '（未設定）' &&
+            editingChild.parentPassword !== '（パスワードは暗号化されています）') {
+            updateData.password = hashPassword(editingChild.parentPassword);
+          }
+
+          const { error: userError } = await supabase
+            .from('users')
+            .update(updateData)
+            .eq('id', facilityChildData.parent_user_id);
+
+          if (userError) {
+            console.error('保護者ログイン情報更新エラー:', userError);
+            alert('保護者のログイン情報の更新に失敗しました。');
+            return;
+          }
+
+          console.log('保護者ログイン情報更新成功');
+        }
+      }
 
       // 子供リストを再取得
       await fetchChildren();
@@ -1425,7 +1742,7 @@ const App: React.FC = () => {
         .insert({
           username: newChild.parentUsername,
           password: hashPassword(newChild.parentPassword),
-          user_type: 'parent', // 明示的に保護者として設定
+          user_type: 'parent',
           display_name: newChild.parentName,
           email: newChild.parentEmail || null
         })
@@ -1653,14 +1970,10 @@ const App: React.FC = () => {
 
     try {
       // 現在のユーザーの施設情報を取得
-      const { data: facilityUser, error: facilityUserError } = await supabase
-        .from('facility_users')
-        .select('facility_id')
-        .eq('user_id', user.id)
-        .single();
+      const facilityId = await getOrCreateAdminFacilityId();
 
-      if (facilityUserError || !facilityUser) {
-        console.error('施設情報の取得に失敗しました:', facilityUserError);
+      if (!facilityId) {
+        console.error('施設情報の取得に失敗しました');
         alert('施設情報の取得に失敗しました。');
         return;
       }
@@ -1669,7 +1982,7 @@ const App: React.FC = () => {
       const { data, error } = await supabase
         .from('announcement_messages')
         .insert({
-          facility_id: facilityUser.facility_id,
+          facility_id: facilityId,
           sender_facility_user_id: user.id,
           title: announcementTitle,
           content: announcementContent,
@@ -1889,6 +2202,30 @@ const App: React.FC = () => {
                                 </div>
                               </div>
                             </div>
+
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                              <h4 className="text-sm font-semibold text-blue-800 mb-3 flex items-center">
+                                <User className="w-4 h-4 mr-1" />
+                                保護者ログイン情報
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-blue-700">ユーザー名:</span>
+                                  <span className="text-blue-900 font-mono font-semibold bg-white px-2 py-1 rounded">
+                                    {child.parentUsername || '未設定'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-blue-700">パスワード:</span>
+                                  <span className="text-blue-900 font-mono bg-white px-2 py-1 rounded">
+                                    {child.parentPassword || '未設定'}
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-xs text-blue-600 mt-3 bg-blue-100 px-2 py-1 rounded">
+                                💡 この情報を保護者の方にお伝えください
+                              </p>
+                            </div>
                           </div>
 
                           {/* 管理情報 */}
@@ -1903,10 +2240,6 @@ const App: React.FC = () => {
                                 <div className="bg-purple-50 rounded-lg p-3">
                                   <div className="text-xs text-purple-600 mb-1">施設</div>
                                   <div className="text-sm font-medium text-purple-900">{user.facility.name}</div>
-                                </div>
-                                <div className="bg-orange-50 rounded-lg p-3">
-                                  <div className="text-xs text-orange-600 mb-1">園児ID</div>
-                                  <div className="text-sm font-medium text-orange-900 font-mono">{child.id}</div>
                                 </div>
                               </div>
                             </div>
@@ -2018,9 +2351,9 @@ const App: React.FC = () => {
             case 'achievement':
               return { label: 'できた', color: 'bg-green-500', bgColor: 'bg-green-50', textColor: 'text-green-700' };
             case 'happy':
-              return { label: '嬉しい', color: 'bg-yellow-500', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700' };
+              return { label: '嬉しかった', color: 'bg-yellow-500', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700' };
             case 'failure':
-              return { label: '気になる', color: 'bg-blue-500', bgColor: 'bg-blue-50', textColor: 'text-blue-700' };
+              return { label: 'できなかった', color: 'bg-blue-500', bgColor: 'bg-blue-50', textColor: 'text-blue-700' };
             case 'trouble':
               return { label: '困った', color: 'bg-red-500', bgColor: 'bg-red-50', textColor: 'text-red-700' };
             default:
@@ -2031,6 +2364,27 @@ const App: React.FC = () => {
         // 成長記録の検索とフィルター
         const getFilteredRecords = () => {
           let filtered = growthRecords;
+
+          // 日次・週次・月次フィルター
+          if (recordsViewMode === 'daily') {
+            filtered = filtered.filter(record =>
+              isSameDay(new Date(record.createdAt), recordsSelectedDate)
+            );
+          } else if (recordsViewMode === 'weekly') {
+            const weekStart = startOfWeek(recordsSelectedDate, { weekStartsOn: 1 });
+            const weekEnd = endOfWeek(recordsSelectedDate, { weekStartsOn: 1 });
+            filtered = filtered.filter(record => {
+              const recordDate = new Date(record.createdAt);
+              return recordDate >= weekStart && recordDate <= weekEnd;
+            });
+          } else if (recordsViewMode === 'monthly') {
+            const monthStart = startOfMonth(recordsSelectedDate);
+            const monthEnd = endOfMonth(recordsSelectedDate);
+            filtered = filtered.filter(record => {
+              const recordDate = new Date(record.createdAt);
+              return recordDate >= monthStart && recordDate <= monthEnd;
+            });
+          }
 
           // カテゴリフィルタ
           if (recordsFilter !== 'all') {
@@ -2057,37 +2411,29 @@ const App: React.FC = () => {
 
         const filteredRecords = getFilteredRecords();
 
-        // 子供別の記録統計
-        const childrenWithRecords = growthRecords.reduce((acc, record) => {
-          const childId = record.childId;
-          if (!acc[childId]) {
-            acc[childId] = {
-              childId,
-              childName: record.childName,
-              childAge: record.childAge,
-              parentName: record.parentName,
-              records: [],
-              recordsCount: 0,
-              recordsByCategory: {
-                achievement: 0,
-                happy: 0,
-                failure: 0,
-                trouble: 0,
-              }
-            };
-          }
+        // 子供別の記録統計（全ての園児を表示）
+        const childrenList = children.map((child) => {
+          const childRecords = growthRecords.filter(r => r.childId === child.id);
+          const recordsByCategory = {
+            achievement: childRecords.filter(r => r.category === 'achievement').length,
+            happy: childRecords.filter(r => r.category === 'happy').length,
+            failure: childRecords.filter(r => r.category === 'failure').length,
+            trouble: childRecords.filter(r => r.category === 'trouble').length
+          };
 
-          acc[childId].records.push(record);
-          acc[childId].recordsCount++;
-          acc[childId].recordsByCategory[record.category]++;
-
-          return acc;
-        }, {} as any);
-
-        const childrenList = Object.values(childrenWithRecords).map((child: any) => ({
-          ...child,
-          latestRecord: child.records[0] // 最新の記録
-        }));
+          return {
+            id: child.id,
+            childId: child.id,
+            childName: child.name,
+            childAge: child.age,
+            childGender: child.gender,
+            parentName: child.parentName || '保護者',
+            records: childRecords,
+            recordsCount: childRecords.length,
+            recordsByCategory,
+            latestRecord: childRecords[0] // 最新の記録
+          };
+        });
 
         return (
           <div className="p-6">
@@ -2101,6 +2447,90 @@ const App: React.FC = () => {
                   <span className="text-sm font-medium text-purple-600">
                     総記録数 {growthRecords.length}件
                   </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 日次・週次・月次切り替えタブ */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                {/* タブ */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setRecordsViewMode('daily')}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${recordsViewMode === 'daily'
+                      ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                  >
+                    📅 日次
+                  </button>
+                  <button
+                    onClick={() => setRecordsViewMode('weekly')}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${recordsViewMode === 'weekly'
+                      ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                  >
+                    📊 週次
+                  </button>
+                  <button
+                    onClick={() => setRecordsViewMode('monthly')}
+                    className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${recordsViewMode === 'monthly'
+                      ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                  >
+                    📆 月次
+                  </button>
+                </div>
+
+                {/* 日付ナビゲーション */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      if (recordsViewMode === 'daily') {
+                        setRecordsSelectedDate(subDays(recordsSelectedDate, 1));
+                      } else if (recordsViewMode === 'weekly') {
+                        setRecordsSelectedDate(subWeeks(recordsSelectedDate, 1));
+                      } else if (recordsViewMode === 'monthly') {
+                        setRecordsSelectedDate(subMonths(recordsSelectedDate, 1));
+                      }
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  <div className="text-center min-w-[180px]">
+                    <div className="text-base font-semibold text-gray-800">
+                      {recordsViewMode === 'daily' && format(recordsSelectedDate, 'yyyy年MM月dd日(E)', { locale: ja })}
+                      {recordsViewMode === 'weekly' && `${format(startOfWeek(recordsSelectedDate, { weekStartsOn: 1 }), 'MM/dd', { locale: ja })} - ${format(endOfWeek(recordsSelectedDate, { weekStartsOn: 1 }), 'MM/dd', { locale: ja })}`}
+                      {recordsViewMode === 'monthly' && format(recordsSelectedDate, 'yyyy年MM月', { locale: ja })}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (recordsViewMode === 'daily') {
+                        setRecordsSelectedDate(addDays(recordsSelectedDate, 1));
+                      } else if (recordsViewMode === 'weekly') {
+                        setRecordsSelectedDate(addWeeks(recordsSelectedDate, 1));
+                      } else if (recordsViewMode === 'monthly') {
+                        setRecordsSelectedDate(addMonths(recordsSelectedDate, 1));
+                      }
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  <button
+                    onClick={() => setRecordsSelectedDate(new Date())}
+                    className="ml-2 px-4 py-2 bg-blue-100 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors"
+                  >
+                    今日
+                  </button>
                 </div>
               </div>
             </div>
@@ -2175,10 +2605,10 @@ const App: React.FC = () => {
 
             {/* メイン表示エリア */}
             {!selectedChildForRecords ? (
-              /* 子供一覧 */
+              /* 園児一覧 */
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-700">子供の成長記録一覧</h2>
+                  <h2 className="text-lg font-bold text-gray-700">園児の記録一覧</h2>
                   {(recordsSearchQuery.trim() || recordsFilter !== 'all') && (
                     <button
                       onClick={() => {
@@ -2218,11 +2648,11 @@ const App: React.FC = () => {
                           <div className="text-sm font-bold text-green-800">{child.recordsByCategory.achievement}件</div>
                         </div>
                         <div className="bg-yellow-50 rounded-lg p-2 text-center">
-                          <div className="text-xs text-yellow-700 font-medium">嬉しい</div>
+                          <div className="text-xs text-yellow-700 font-medium">嬉しかった</div>
                           <div className="text-sm font-bold text-yellow-800">{child.recordsByCategory.happy}件</div>
                         </div>
                         <div className="bg-blue-50 rounded-lg p-2 text-center">
-                          <div className="text-xs text-blue-700 font-medium">気になる</div>
+                          <div className="text-xs text-blue-700 font-medium">できなかった</div>
                           <div className="text-sm font-bold text-blue-800">{child.recordsByCategory.failure}件</div>
                         </div>
                         <div className="bg-red-50 rounded-lg p-2 text-center">
@@ -2257,7 +2687,7 @@ const App: React.FC = () => {
                 )}
               </div>
             ) : (
-              /* 選択された子供の記録詳細 */
+              /* 選択された園児の記録詳細 */
               <div>
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-3">
@@ -2275,8 +2705,39 @@ const App: React.FC = () => {
                         {childrenList.find(c => c.childId === selectedChildForRecords)?.childName}さんの記録
                       </h2>
                       <p className="text-sm text-gray-500">
-                        {filteredRecords.length}件の記録 • 保護者: {childrenList.find(c => c.childId === selectedChildForRecords)?.parentName}
+                        {filteredRecords.length}件の記録 • {childrenList.find(c => c.childId === selectedChildForRecords)?.childAge}歳
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* カテゴリー別統計 */}
+                <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6">
+                  <h3 className="text-sm font-medium text-gray-600 mb-3">カテゴリー別記録数</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {filteredRecords.filter(r => r.category === 'achievement').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">できた</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {filteredRecords.filter(r => r.category === 'happy').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">嬉しかった</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {filteredRecords.filter(r => r.category === 'failure').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">できなかった</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-red-600">
+                        {filteredRecords.filter(r => r.category === 'trouble').length}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">困った</div>
                     </div>
                   </div>
                 </div>
@@ -2997,7 +3458,7 @@ const App: React.FC = () => {
         {/* ログアウト */}
         <div className="p-4 border-t border-gray-200">
           <button
-            onClick={logout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="w-full flex items-center space-x-3 px-4 py-3 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
           >
             <LogOut className="w-5 h-5" />
@@ -3127,7 +3588,7 @@ const App: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">保護者用ユーザー名 <span className="text-red-500">*</span></label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">保護者アプリのログインID <span className="text-red-500">*</span></label>
                       <input
                         type="text"
                         value={newChild.parentUsername}
@@ -3136,10 +3597,10 @@ const App: React.FC = () => {
                         placeholder="yamada_taro"
                         required
                       />
-                      <p className="mt-1 text-xs text-gray-500">※保護者がログインに使用するユーザー名</p>
+                      <p className="mt-1 text-xs text-gray-500">※保護者がアプリにログインする際のID（半角英数字推奨）</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">保護者用パスワード <span className="text-red-500">*</span></label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">保護者アプリのパスワード <span className="text-red-500">*</span></label>
                       <input
                         type="password"
                         value={newChild.parentPassword}
@@ -3154,7 +3615,7 @@ const App: React.FC = () => {
                           ⚠️ パスワードは6文字以上で入力してください（現在: {newChild.parentPassword.length}文字）
                         </p>
                       )}
-                      <p className="mt-1 text-xs text-gray-500">※保護者がログインに使用するパスワード（6文字以上推奨）</p>
+                      <p className="mt-1 text-xs text-gray-500">※この情報を保護者にお伝えください（必ず6文字以上）</p>
                     </div>
                   </div>
                 </div>
@@ -3309,20 +3770,24 @@ const App: React.FC = () => {
                     key={message.id}
                     className={`flex ${message.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className="max-w-xs">
-                      <div
-                        className={`px-4 py-3 rounded-2xl ${message.sender === 'admin'
-                          ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-br-md'
-                          : 'bg-blue-50 border border-blue-200 text-gray-900 rounded-bl-md'
-                          }`}
-                      >
-                        <p className="text-sm leading-relaxed">{message.message}</p>
-                      </div>
-                      <div className="flex items-center justify-between mt-2 px-1">
-                        <p className={`text-xs ${message.sender === 'admin' ? 'text-gray-400' : 'text-blue-600'}`}>
-                          {message.senderName}
-                        </p>
-                        <p className="text-xs text-gray-400">
+                    <div className={`flex items-end space-x-2 max-w-[75%] ${message.sender === 'admin' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                      {/* アイコンは相手側のみ表示 (LINE風) */}
+                      {message.sender !== 'admin' && (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-md mb-1">
+                          <User className="w-5 h-5 text-white" />
+                        </div>
+                      )}
+
+                      <div className="flex flex-col">
+                        <div
+                          className={`${message.sender === 'admin'
+                            ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl rounded-br-sm shadow-md'
+                            : 'bg-white border border-gray-200 text-gray-900 rounded-2xl rounded-bl-sm shadow-sm'
+                            } px-4 py-2.5`}
+                        >
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.message}</p>
+                        </div>
+                        <p className={`text-xs text-gray-400 mt-1 ${message.sender === 'admin' ? 'text-right' : 'text-left'} px-1`}>
                           {formatTime(message.timestamp)}
                         </p>
                       </div>
@@ -3332,20 +3797,29 @@ const App: React.FC = () => {
             </div>
 
             {/* メッセージ入力 */}
-            <div className="p-6 border-t border-gray-200">
-              <div className="flex space-x-3">
-                <input
-                  type="text"
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
+              <div className="flex items-end space-x-3">
+                <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={`${children.find(c => c.id === chatChild)?.parentName || 'ご家族'}にメッセージを送信...`}
-                  className="flex-1 px-4 py-3 bg-gray-100 border-0 rounded-2xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:bg-white transition-all duration-200"
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  placeholder={`${children.find(c => c.id === chatChild)?.parentName || 'ご家族'}にメッセージを送信...\n\nShift + Enter: 改行\nEnter: 送信`}
+                  className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-300 transition-all duration-200 resize-none min-h-[60px] max-h-[200px]"
+                  rows={2}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  style={{
+                    overflowY: 'auto',
+                    scrollbarWidth: 'thin'
+                  }}
                 />
                 <button
                   onClick={sendMessage}
                   disabled={!newMessage.trim()}
-                  className="p-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-3 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg flex-shrink-0"
                 >
                   <Send className="w-5 h-5" />
                 </button>
@@ -3577,9 +4051,34 @@ const App: React.FC = () => {
                       />
                     </div>
                   </div>
-                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-                    <p className="text-sm text-yellow-800">
-                      <strong>注意:</strong> 保護者のログイン情報（ユーザー名・パスワード）の変更は、現在対応していません。必要な場合は別途お問い合わせください。
+
+                  {/* ログイン情報編集 */}
+                  <div className="mt-4 bg-blue-50 rounded-xl p-4">
+                    <h5 className="text-sm font-semibold text-blue-900 mb-3">保護者アプリのログイン情報</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">ログインID（ユーザー名）</label>
+                        <input
+                          type="text"
+                          value={editingChild.parentUsername || ''}
+                          onChange={(e) => setEditingChild({ ...editingChild, parentUsername: e.target.value })}
+                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          placeholder="yamada_taro"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
+                        <input
+                          type="text"
+                          value={editingChild.parentPassword || ''}
+                          onChange={(e) => setEditingChild({ ...editingChild, parentPassword: e.target.value })}
+                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          placeholder="6文字以上"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-700 mt-2">
+                      💡 ログイン情報を変更すると、保護者の方は新しい情報でログインする必要があります
                     </p>
                   </div>
                 </div>
@@ -3713,6 +4212,16 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ログアウト確認ダイアログ */}
+      <LogoutConfirmDialog
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={async () => {
+          await logout();
+          setShowLogoutConfirm(false);
+        }}
+      />
     </div>
   );
 };

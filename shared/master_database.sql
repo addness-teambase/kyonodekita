@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   username TEXT NOT NULL UNIQUE,
   password TEXT NOT NULL,
+  plain_password TEXT, -- 平文パスワード（施設管理者が確認用）※セキュリティ注意
   user_type TEXT NOT NULL DEFAULT 'parent' CHECK (user_type IN ('parent', 'admin', 'facility_admin', 'facility_staff')),
   email TEXT UNIQUE,
   display_name TEXT,
@@ -812,6 +813,70 @@ SELECT
 FROM children c, users u
 WHERE c.user_id = u.id AND u.username = 'demo_parent'
 ON CONFLICT (child_id, facility_id) DO NOTHING;
+
+-- Sample facility_children (essential for parent-admin data linking)
+INSERT INTO facility_children (child_id, facility_id, parent_user_id, enrollment_date, status)
+SELECT 
+  c.id,
+  '55555555-5555-5555-5555-555555555555'::uuid,
+  u.id,
+  CURRENT_DATE,
+  'active'
+FROM children c, users u
+WHERE c.user_id = u.id AND u.username = 'demo_parent'
+ON CONFLICT (child_id, facility_id) DO NOTHING;
+
+-- Sample records for testing parent-admin data linking
+INSERT INTO records (id, child_id, user_id, category, note, timestamp, created_at)
+SELECT 
+  uuid_generate_v4(),
+  c.id,
+  u.id,
+  'achievement',
+  'テスト記録：できました！',
+  NOW(),
+  NOW()
+FROM children c, users u
+WHERE c.user_id = u.id AND u.username = 'demo_parent'
+
+UNION ALL
+
+SELECT 
+  uuid_generate_v4(),
+  c.id,
+  u.id,
+  'happy',
+  'テスト記録：嬉しかったです！',
+  NOW() - INTERVAL '1 hour',
+  NOW() - INTERVAL '1 hour'
+FROM children c, users u
+WHERE c.user_id = u.id AND u.username = 'demo_parent'
+
+UNION ALL
+
+SELECT 
+  uuid_generate_v4(),
+  c.id,
+  u.id,
+  'failure',
+  'テスト記録：できませんでした',
+  NOW() - INTERVAL '2 hours',
+  NOW() - INTERVAL '2 hours'
+FROM children c, users u
+WHERE c.user_id = u.id AND u.username = 'demo_parent'
+
+UNION ALL
+
+SELECT 
+  uuid_generate_v4(),
+  c.id,
+  u.id,
+  'trouble',
+  'テスト記録：困りました',
+  NOW() - INTERVAL '3 hours',
+  NOW() - INTERVAL '3 hours'
+FROM children c, users u
+WHERE c.user_id = u.id AND u.username = 'demo_parent';
 
 -- Default data retention policies
 INSERT INTO data_retention_policies (facility_id, data_type, retention_period_months, delete_on_withdrawal)

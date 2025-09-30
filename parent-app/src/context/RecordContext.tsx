@@ -94,6 +94,7 @@ interface RecordContextType {
     addGrowthRecord: (title: string, description: string, category: 'first_time' | 'milestone' | 'achievement' | 'memory', media?: { type: 'image' | 'video'; data: string; name: string; size: number; }) => Promise<void>;
     updateGrowthRecord: (id: string, title: string, description: string, category: 'first_time' | 'milestone' | 'achievement' | 'memory', media?: { type: 'image' | 'video'; data: string; name: string; size: number; }) => Promise<void>;
     deleteGrowthRecord: (id: string) => Promise<void>;
+    isLoadingChildren: boolean;
 }
 
 interface RecordProviderProps {
@@ -125,81 +126,114 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const [cachedContent, setCachedContent] = useState<CachedContent>({});
     const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
     const [isDataMigrated, setIsDataMigrated] = useState(true); // ローカルストレージ使用なので常にtrue
+    const [isLoadingChildren, setIsLoadingChildren] = useState(true); // 子供データの読み込み状態
+    const [hasLoadedInitialData, setHasLoadedInitialData] = useState(false); // 初回データ読み込み完了フラグ
 
     // 現在アクティブな子供の情報
     const childInfo = activeChildId ? childrenList.find(child => child.id === activeChildId) || null : null;
 
     const today = startOfToday();
 
-    // Supabaseからデータを読み込む
+    // Supabaseからデータを読み込む（初回のみ）
     useEffect(() => {
-        if (isAuthenticated && user) {
+        if (isAuthenticated && user && !hasLoadedInitialData) {
+            console.log('🚀 初回データロード開始');
             loadDataFromSupabase();
+        } else if (!isAuthenticated || !user) {
+            // ユーザーがいない場合はローディングを終了
+            setIsLoadingChildren(false);
+            setHasLoadedInitialData(false);
         }
-    }, [isAuthenticated, user]);
+    }, [isAuthenticated, user, hasLoadedInitialData]);
 
     // Supabaseからデータを読み込む関数
     const loadDataFromSupabase = async () => {
-        if (!user) return;
+        if (!user) {
+            setIsLoadingChildren(false);
+            return;
+        }
 
+        setIsLoadingChildren(true);
         try {
-            // 親ユーザーに関連する子供データと施設情報を取得
+            // 親ユーザーに関連する子供データと施設情報を取得（JOINエラー回避）
             const { data: facilityChildrenData, error: facilityChildrenError } = await supabase
                 .from('facility_children')
-                .select(`
-                    child_id,
-                    facility_id,
-                    children (
-                        id,
-                        name,
-                        age,
-                        birthdate,
-                        gender,
-                        avatar_image
-                    )
-                `)
+                .select('child_id, facility_id')
                 .eq('parent_user_id', user.id)
                 .eq('status', 'active');
 
             if (facilityChildrenError) {
-                console.error('子供データの読み込みエラー:', facilityChildrenError);
-            } else if (facilityChildrenData) {
-                const childrenList = facilityChildrenData
-                    .filter(item => item.children) // nullチェック
-                    .map(item => ({
-                        id: item.children.id,
-                        name: item.children.name,
-                        age: item.children.age,
-                        birthdate: item.children.birthdate,
-                        gender: item.children.gender,
-                        avatarImage: item.children.avatar_image
-                    }));
+                console.error('❌ 施設子供関係データの読み込みエラー:', facilityChildrenError.message);
+            } else if (facilityChildrenData && facilityChildrenData.length > 0) {
+                console.log('✅ 施設子供関係データ取得:', facilityChildrenData.length, '件');
+
+                // 個別に子供データを取得
+                const childrenList = [];
+                for (const relation of facilityChildrenData) {
+                    try {
+                        const { data: childData, error: childError } = await supabase
+                            .from('children')
+                            .select('id, name, age, birthdate, gender, avatar_image')
+                            .eq('id', relation.child_id)
+                            .single();
+
+                        if (childError) {
+                            console.warn('子供データ取得スキップ:', relation.child_id);
+                        } else if (childData) {
+                            childrenList.push({
+                                id: childData.id,
+                                name: childData.name,
+                                age: childData.age,
+                                birthdate: childData.birthdate,
+                                gender: childData.gender,
+                                avatarImage: childData.avatar_image
+                            });
+                        }
+                    } catch (childFetchError) {
+                        console.warn('子供データ取得処理エラー:', relation.child_id);
+                    }
+                }
+
                 setChildrenList(childrenList);
+                console.log('✅ 子供リスト設定完了:', childrenList.length, '人');
 
                 // アクティブな子供IDが設定されていない場合、最初の子供を選択
                 if (childrenList.length > 0 && !activeChildId) {
                     setActiveChildId(childrenList[0].id);
+                    console.log('✅ アクティブ子供ID設定:', childrenList[0].id, childrenList[0].name);
                 }
+            } else {
+                console.log('👶 このユーザーに関連付けられた子供が見つかりません');
+                setChildrenList([]);
             }
 
-            // 記録データの読み込み
-            const { data: records, error: recordsError } = await supabase
-                .from('records')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('timestamp', { ascending: false });
+            // 記録データの読み込み（エラーハンドリング強化）
+            try {
+                const { data: records, error: recordsError } = await supabase
+                    .from('records')
+                    .select('id, child_id, category, note, timestamp, created_at')
+                    .eq('user_id', user.id)
+                    .order('timestamp', { ascending: false });
 
-            if (recordsError) {
-                console.error('記録データの読み込みエラー:', recordsError);
-            } else if (records) {
-                const recordsList = records.map(record => ({
-                    id: record.id,
-                    childId: record.child_id,
-                    timestamp: record.timestamp,
-                    category: record.category,
-                    note: record.note
-                }));
-                setRecordEvents(recordsList);
+                if (recordsError) {
+                    console.error('❌ 記録データの読み込みエラー:', recordsError.message);
+                } else if (records) {
+                    const recordsList = records.map(record => ({
+                        id: record.id,
+                        childId: record.child_id,
+                        timestamp: record.timestamp || record.created_at,
+                        category: record.category,
+                        note: record.note
+                    }));
+                    setRecordEvents(recordsList);
+                    console.log('✅ 記録データ読み込み完了:', recordsList.length, '件');
+                } else {
+                    console.log('📝 記録データなし（初回ログイン）');
+                    setRecordEvents([]);
+                }
+            } catch (recordFetchError) {
+                console.error('記録データ取得処理でエラー:', recordFetchError);
+                setRecordEvents([]);
             }
 
             // カレンダーイベントの読み込み（個人予定）
@@ -314,6 +348,10 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         } catch (error) {
             console.log('Supabaseデータの読み込みエラー（オフラインモード）:', error);
             // オフラインモードでもアプリを正常に動作させる
+        } finally {
+            setIsLoadingChildren(false);
+            setHasLoadedInitialData(true); // 初回データロード完了を記録
+            console.log('✅ 初回データロード完了');
         }
 
         // ローカルストレージからも出席記録を読み込む（デモ用）
@@ -340,15 +378,84 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         setSelectedDate(date);
     };
 
+    // 記録データのみを再読み込み（初回データロードの影響を受けない）
+    const refreshRecords = async () => {
+        if (!user) {
+            console.warn('⚠️ ユーザーが未設定のため記録更新をスキップ');
+            return;
+        }
+
+        try {
+            console.log('🔄 記録データの再読み込み開始...（既存記録を上書きします）');
+
+            const { data: records, error: recordsError } = await supabase
+                .from('records')
+                .select('id, child_id, category, note, timestamp, created_at')
+                .eq('user_id', user.id)
+                .order('timestamp', { ascending: false });
+
+            if (recordsError) {
+                console.error('❌ 記録データの再読み込みエラー:', recordsError.message);
+                console.error('エラー詳細:', recordsError);
+                return;
+            }
+
+            const recordsList = records?.map(record => ({
+                id: record.id,
+                childId: record.child_id,
+                timestamp: record.timestamp || record.created_at,
+                category: record.category,
+                note: record.note
+            })) || [];
+
+            console.log('🔄 古い記録数:', recordEvents.length);
+            console.log('🔄 新しい記録数:', recordsList.length);
+
+            setRecordEvents(recordsList);
+            console.log('✅ 記録データ再読み込み完了 - 最新のデータに更新されました');
+
+            if (recordsList.length > 0) {
+                console.log('📋 最新記録サンプル:', recordsList.slice(0, 2));
+            }
+        } catch (error) {
+            console.error('❌ 記録データ再読み込み処理でエラー:', error);
+        }
+    };
+
     const addRecordEvent = async (category: RecordCategory, note: string): Promise<void> => {
         if (!user || !activeChildId) return;
 
+        console.log('📝 記録作成開始:', {
+            userId: user.id,
+            activeChildId,
+            category,
+            note,
+            currentRecordsCount: recordEvents.length
+        });
+
         try {
+            // 子供に関連付けられた施設IDを取得
+            const { data: facilityData, error: facilityError } = await supabase
+                .from('facility_children')
+                .select('facility_id')
+                .eq('child_id', activeChildId)
+                .eq('parent_user_id', user.id)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            if (facilityError) {
+                console.error('❌ 施設ID取得エラー:', facilityError);
+            }
+
+            const facilityId = facilityData?.facility_id || null;
+            console.log('✅ 施設ID:', facilityId);
+
             const { data, error } = await supabase
                 .from('records')
                 .insert({
                     child_id: activeChildId,
                     user_id: user.id,
+                    facility_id: facilityId, // 施設IDを設定
                     category,
                     note,
                     timestamp: new Date().toISOString()
@@ -357,22 +464,24 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 .single();
 
             if (error) {
-                console.error('記録追加エラー:', error);
+                console.error('❌ 記録追加エラー:', error);
                 return;
             }
 
-            const newRecord: RecordEvent = {
+            console.log('✅ Supabaseに記録保存成功:', {
                 id: data.id,
-                childId: data.child_id,
-                timestamp: data.timestamp,
                 category: data.category,
-                note: data.note
-            };
+                note: data.note,
+                facility_id: data.facility_id
+            });
 
-            const updatedRecords = [newRecord, ...recordEvents];
-            setRecordEvents(updatedRecords);
+            // Supabaseから最新の記録データを再読み込み
+            console.log('🔄 最新データを取得して画面を更新します...');
+            await refreshRecords();
+
+            console.log('🎉 記録追加完了 - 画面に表示されているはずです！');
         } catch (error) {
-            console.error('記録追加エラー:', error);
+            console.error('❌ 記録追加処理でエラー:', error);
         }
     };
 
@@ -380,6 +489,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (!user) return;
 
         try {
+            console.log('✏️ 記録更新開始:', { id, category, note });
+
             const { error } = await supabase
                 .from('records')
                 .update({
@@ -394,10 +505,12 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 return;
             }
 
-            const updatedRecords = recordEvents.map(record =>
-                record.id === id ? { ...record, category, note } : record
-            );
-            setRecordEvents(updatedRecords);
+            console.log('✅ 記録更新成功');
+
+            // Supabaseから最新の記録データを再読み込み
+            await refreshRecords();
+
+            console.log('✅ 記録一覧を更新しました');
         } catch (error) {
             console.error('記録更新エラー:', error);
         }
@@ -407,6 +520,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (!user) return;
 
         try {
+            console.log('🗑️ 記録削除開始:', { id });
+
             const { error } = await supabase
                 .from('records')
                 .delete()
@@ -417,8 +532,12 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 return;
             }
 
-            const updatedRecords = recordEvents.filter(record => record.id !== id);
-            setRecordEvents(updatedRecords);
+            console.log('✅ 記録削除成功');
+
+            // Supabaseから最新の記録データを再読み込み
+            await refreshRecords();
+
+            console.log('✅ 記録一覧を更新しました');
         } catch (error) {
             console.error('記録削除エラー:', error);
         }
@@ -599,11 +718,28 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         if (!user || !activeChildId) return;
 
         try {
+            // 子供に関連付けられた施設IDを取得
+            const { data: facilityData, error: facilityError } = await supabase
+                .from('facility_children')
+                .select('facility_id')
+                .eq('child_id', activeChildId)
+                .eq('parent_user_id', user.id)
+                .eq('status', 'active')
+                .maybeSingle();
+
+            if (facilityError) {
+                console.error('❌ 施設ID取得エラー:', facilityError);
+            }
+
+            const facilityId = facilityData?.facility_id || null;
+            console.log('✅ 成長記録の施設ID:', facilityId);
+
             const { data, error } = await supabase
                 .from('growth_records')
                 .insert({
                     user_id: user.id,
                     child_id: activeChildId,
+                    facility_id: facilityId, // 施設IDを設定
                     title,
                     description,
                     category,
@@ -620,6 +756,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 console.error('成長記録追加エラー:', error);
                 return;
             }
+
+            console.log('✅ 成長記録追加完了:', { facility_id: facilityId });
 
             const newRecord: GrowthRecord = {
                 id: data.id,
@@ -889,6 +1027,17 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         return event.childId === activeChildId && isSameDay(eventDate, today);
     });
 
+    // デバッグ用：今日の記録数をログ出力
+    useEffect(() => {
+        console.log('📊 現在の状態:', {
+            totalRecords: recordEvents.length,
+            todayRecords: todayEvents.length,
+            activeChildId,
+            hasLoadedInitialData,
+            isLoadingChildren
+        });
+    }, [recordEvents.length, todayEvents.length, activeChildId, hasLoadedInitialData, isLoadingChildren]);
+
     return (
         <RecordContext.Provider value={{
             recordEvents,
@@ -932,7 +1081,8 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
             growthRecords,
             addGrowthRecord,
             updateGrowthRecord,
-            deleteGrowthRecord
+            deleteGrowthRecord,
+            isLoadingChildren
         }}>
             {children}
         </RecordContext.Provider>

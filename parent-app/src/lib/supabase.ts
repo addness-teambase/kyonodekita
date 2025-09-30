@@ -321,33 +321,35 @@ export const announcementApi = {
     // 園からの一斉メッセージを取得
     async getAnnouncements(userId: string) {
         try {
-            // まず、ユーザーの施設IDを取得
-            const { data: facilityMembership, error: membershipError } = await supabase
-                .from('facility_memberships')
+            // まず、ユーザーの施設IDを取得（facility_childrenテーブルを使用）
+            const { data: facilityChildData, error: membershipError } = await supabase
+                .from('facility_children')
                 .select('facility_id')
-                .eq('user_id', userId)
+                .eq('parent_user_id', userId)
                 .eq('status', 'active')
-                .single();
+                .maybeSingle();
 
-            if (membershipError || !facilityMembership) {
-                console.error('施設情報の取得エラー:', membershipError);
+            if (membershipError) {
+                console.error('❌ 施設情報の取得エラー:', membershipError);
                 return { data: [], error: membershipError };
+            }
+
+            if (!facilityChildData) {
+                console.log('⚠️ 施設に所属していません');
+                return { data: [], error: null };
             }
 
             // その施設の一斉メッセージを取得
             const { data: announcements, error } = await supabase
                 .from('announcement_messages')
-                .select(`
-                    *,
-                    sender_facility_user:facility_users!sender_facility_user_id(display_name)
-                `)
-                .eq('facility_id', facilityMembership.facility_id)
+                .select('*')
+                .eq('facility_id', facilityChildData.facility_id)
                 .eq('is_published', true)
                 .order('published_at', { ascending: false });
 
             return { data: announcements || [], error };
         } catch (error) {
-            console.error('一斉メッセージ取得エラー:', error);
+            console.error('❌ 一斉メッセージ取得エラー:', error);
             return { data: [], error };
         }
     },
@@ -378,34 +380,41 @@ export const announcementApi = {
     // 未読の一斉メッセージ数を取得
     async getUnreadAnnouncementsCount(userId: string) {
         try {
-            // ユーザーの施設IDを取得
-            const { data: facilityMembership, error: membershipError } = await supabase
-                .from('facility_memberships')
+            // ユーザーの施設IDを取得（facility_childrenテーブルを使用）
+            const { data: facilityChildData, error: membershipError } = await supabase
+                .from('facility_children')
                 .select('facility_id')
-                .eq('user_id', userId)
+                .eq('parent_user_id', userId)
                 .eq('status', 'active')
-                .single();
+                .maybeSingle();
 
-            if (membershipError || !facilityMembership) {
+            if (membershipError) {
+                console.error('❌ 施設情報の取得エラー:', membershipError);
                 return { count: 0, error: membershipError };
+            }
+
+            if (!facilityChildData) {
+                console.log('⚠️ 施設に所属していません');
+                return { count: 0, error: null };
             }
 
             // その施設の一斉メッセージの中で未読のものをカウント
             const { data: announcements, error: announcementsError } = await supabase
                 .from('announcement_messages')
                 .select('id')
-                .eq('facility_id', facilityMembership.facility_id)
+                .eq('facility_id', facilityChildData.facility_id)
                 .eq('is_published', true);
 
-            if (announcementsError || !announcements) {
+            if (announcementsError) {
+                console.error('❌ 一斉メッセージ取得エラー:', announcementsError);
                 return { count: 0, error: announcementsError };
             }
 
-            const announcementIds = announcements.map(a => a.id);
-
-            if (announcementIds.length === 0) {
+            if (!announcements || announcements.length === 0) {
                 return { count: 0, error: null };
             }
+
+            const announcementIds = announcements.map(a => a.id);
 
             // 既読状態をチェック
             const { data: readStatus, error: readError } = await supabase
@@ -416,6 +425,7 @@ export const announcementApi = {
                 .eq('is_read', true);
 
             if (readError) {
+                console.error('❌ 既読状態取得エラー:', readError);
                 return { count: 0, error: readError };
             }
 
@@ -424,7 +434,7 @@ export const announcementApi = {
 
             return { count: unreadCount, error: null };
         } catch (error) {
-            console.error('未読お知らせ数取得エラー:', error);
+            console.error('❌ 未読お知らせ数取得エラー:', error);
             return { count: 0, error };
         }
     }

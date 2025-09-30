@@ -160,15 +160,15 @@ const CalendarView: React.FC = () => {
 
         setLoading(true);
         try {
-            // 現在のユーザーの施設情報を取得
-            const { data: facilityUser, error: facilityError } = await supabase
-                .from('facility_users')
+            // 現在のユーザーの施設情報を取得（usersテーブルから）
+            const { data: userData, error: userError } = await supabase
+                .from('users')
                 .select('facility_id')
-                .eq('user_id', user.id)
-                .single();
+                .eq('id', user.id)
+                .maybeSingle();
 
-            if (facilityError || !facilityUser) {
-                console.error('施設情報取得エラー:', facilityError);
+            if (userError || !userData || !userData.facility_id) {
+                console.error('施設情報取得エラー:', userError);
                 alert('施設情報の取得に失敗しました。');
                 return;
             }
@@ -177,7 +177,7 @@ const CalendarView: React.FC = () => {
             const { data, error } = await supabase
                 .from('calendar_events')
                 .insert({
-                    facility_id: facilityUser.facility_id,
+                    facility_id: userData.facility_id,
                     facility_user_id: user.id,
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     title: newEventTitle,

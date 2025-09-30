@@ -1767,35 +1767,32 @@ ${userMessage}
                           <div key={index} className={`w-full ${msg.sender === 'parent' ? 'flex justify-end' : ''}`}>
                             <div className={`max-w-3xl w-full ${msg.sender === 'parent' ? 'pl-8' : 'pr-8'}`}>
                               <div className={`group relative ${msg.sender === 'parent' ? 'ml-auto' : ''}`}>
-                                <div className="flex items-start space-x-3">
-                                  {msg.sender !== 'parent' && (
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                      <MessageSquare className="w-4 h-4 text-white" />
-                                    </div>
-                                  )}
-
-                                  <div className={`flex-1 ${msg.sender === 'parent' ? 'text-right' : ''}`}>
-                                    <div className={`${msg.sender !== 'parent'
-                                      ? 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm'
-                                      : 'bg-orange-500 text-white rounded-2xl rounded-tr-sm shadow-sm ml-auto max-w-2xl'
-                                      } px-4 py-3 inline-block`}>
-                                      <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                        {msg.content}
+                                <div className={`flex ${msg.sender === 'parent' ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`flex items-end space-x-2 max-w-[75%] ${msg.sender === 'parent' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                                    {/* アイコンは相手側のみ表示 (LINE風) */}
+                                    {msg.sender !== 'parent' && (
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 flex items-center justify-center flex-shrink-0 shadow-md mb-1">
+                                        <MessageSquare className="w-5 h-5 text-white" />
                                       </div>
-                                    </div>
-                                    <p className={`text-xs text-gray-400 mt-2 ${msg.sender === 'parent' ? 'text-right mr-2' : 'ml-2'}`}>
-                                      {new Date(msg.timestamp).toLocaleTimeString('ja-JP', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </p>
-                                  </div>
+                                    )}
 
-                                  {msg.sender === 'parent' && (
-                                    <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                      <User size={14} className="text-white" />
+                                    <div className="flex flex-col">
+                                      <div className={`${msg.sender !== 'parent'
+                                        ? 'bg-white text-gray-800 rounded-2xl rounded-bl-sm shadow-sm border border-gray-200'
+                                        : 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-2xl rounded-br-sm shadow-md'
+                                        } px-4 py-2.5`}>
+                                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                          {msg.content}
+                                        </div>
+                                      </div>
+                                      <p className={`text-xs text-gray-400 mt-1 ${msg.sender === 'parent' ? 'text-right' : 'text-left'} px-1`}>
+                                        {new Date(msg.timestamp).toLocaleTimeString('ja-JP', {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -1826,15 +1823,15 @@ ${userMessage}
                 </div>
 
                 {/* メッセージ入力エリア - 常に固定表示 */}
-                <div className="bg-white border-t border-gray-100 p-4 mt-auto flex-shrink-0">
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="text"
+                <div className="bg-gray-50 border-t border-gray-100 p-4 mt-auto flex-shrink-0">
+                  <div className="flex items-end space-x-3">
+                    <textarea
                       value={directMessage}
                       onChange={(e) => setDirectMessage(e.target.value)}
-                      placeholder="園の先生にメッセージを送信..."
-                      className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-300 text-sm resize-none transition-all duration-200"
-                      onKeyPress={(e) => {
+                      placeholder="園の先生にメッセージを送信...&#10;&#10;Shift + Enter: 改行&#10;Enter: 送信"
+                      className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-300 text-sm resize-none transition-all duration-200 min-h-[60px] max-h-[200px]"
+                      rows={2}
+                      onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           if (directMessage.trim()) {
@@ -1843,12 +1840,16 @@ ${userMessage}
                         }
                       }}
                       disabled={!childInfo}
-                      style={{ WebkitTapHighlightColor: 'transparent' }}
+                      style={{
+                        WebkitTapHighlightColor: 'transparent',
+                        overflowY: 'auto',
+                        scrollbarWidth: 'thin'
+                      }}
                     />
                     <button
                       onClick={handleSendDirectMessage}
                       disabled={!childInfo || !directMessage.trim()}
-                      className="p-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-2xl hover:from-orange-600 hover:to-yellow-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      className="p-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-2xl hover:from-orange-600 hover:to-yellow-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-md hover:shadow-lg"
                       style={{ WebkitTapHighlightColor: 'transparent' }}
                     >
                       <Send className="w-5 h-5" />
@@ -3100,8 +3101,23 @@ function DataMigrationPrompt() {
 
 // ログイン後の状態管理コンポーネント
 function AuthenticatedApp() {
-  const { children, isDataMigrated } = useRecord();
+  const { children, isDataMigrated, isLoadingChildren } = useRecord();
   const hasChildren = children.length > 0;
+
+  // データ読み込み中の場合はローディング表示
+  if (isLoadingChildren) {
+    return (
+      <div className="full-screen-container flex items-center justify-center bg-gradient-to-b from-pink-50 to-purple-50">
+        <div className="flex flex-col items-center">
+          <svg className="animate-spin h-10 w-10 mb-4 text-pink-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="font-medium text-gray-600">お子さま情報を確認中...</p>
+        </div>
+      </div>
+    );
+  }
 
   // LocalStorageに既存データがあり、まだ移行していない場合は移行画面を表示
   const hasLocalData = localStorage.getItem('children') || localStorage.getItem('recordEvents');
