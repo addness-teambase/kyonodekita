@@ -146,6 +146,14 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
         }
     }, [isAuthenticated, user, hasLoadedInitialData]);
 
+    // 子供が変更された時に出席記録を再読み込み
+    useEffect(() => {
+        if (activeChildId && hasLoadedInitialData && user) {
+            console.log('👶 子供が変更されました。出席記録を再読み込みします:', activeChildId);
+            refreshAttendanceRecords(activeChildId);
+        }
+    }, [activeChildId, hasLoadedInitialData, user]);
+
     // Supabaseからデータを読み込む関数
     const loadDataFromSupabase = async () => {
         if (!user) {
@@ -292,8 +300,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 facility_user_id: event.facility_user_id
             }));
 
-            const allEvents = [...personalEvents, ...facilityEventsList];
-            setCalendarEvents(allEvents);
+            let allEvents = [...personalEvents, ...facilityEventsList];
 
             // 成長記録の読み込み
             const { data: growthRecords, error: growthError } = await supabase
@@ -324,7 +331,7 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                 setGrowthRecords(growthList);
             }
 
-            // 出席記録（施設からの記録）の読み込み
+            // 出席記録・出席予定（施設からの記録）の読み込み
             // activeChildIdがある場合のみ取得
             if (activeChildId || (childrenList.length > 0)) {
                 const targetChildId = activeChildId || childrenList[0]?.id;
@@ -334,16 +341,73 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
                         .select('*')
                         .eq('child_id', targetChildId)
                         .order('date', { ascending: false })
-                        .limit(30); // 最新30件
+                        .limit(60); // 過去の記録と未来の予定を含む
 
                     if (attendanceError) {
                         console.error('出席記録データの読み込みエラー:', attendanceError);
                     } else if (attendanceData) {
-                        console.log('✅ 出席記録を読み込みました:', attendanceData.length, '件');
+                        console.log('✅ 出席記録・予定を読み込みました:', attendanceData.length, '件');
                         setAttendanceRecords(attendanceData);
+
+                        // 出席記録と予定をカレンダーイベントに変換して統合
+                        const attendanceEvents = attendanceData.map(record => {
+                            // scheduled（予定）の場合と present（出席済）の場合で表示を変える
+                            const isScheduled = record.attendance_status === 'scheduled';
+                            const { childCondition, activities } = parseAttendanceNotes(record.notes || '');
+
+                            if (isScheduled) {
+                                // 出席予定
+                                return {
+                                    id: `attendance_schedule_${record.id}`,
+                                    childId: record.child_id,
+                                    date: record.date,
+                                    title: '🏫 登園予定',
+                                    time: record.scheduled_arrival_time?.slice(0, 5),
+                                    description: `${record.scheduled_arrival_time?.slice(0, 5) || ''} 〜 ${record.scheduled_departure_time?.slice(0, 5) || ''}`,
+                                    type: 'attendance_schedule' as const,
+                                    priority: 'normal' as const
+                                };
+                            } else {
+                                // 出席記録（カレンダーには予定時刻を表示）
+                                const scheduledStart = record.scheduled_arrival_time?.slice(0, 5);
+                                const scheduledEnd = record.scheduled_departure_time?.slice(0, 5);
+                                const displayTime = scheduledStart || record.actual_arrival_time?.slice(0, 5);
+                                const displayDescription = (scheduledStart && scheduledEnd)
+                                    ? `${scheduledStart} 〜 ${scheduledEnd} 施設利用予定`
+                                    : '施設利用';
+
+                                return {
+                                    id: `attendance_${record.id}`,
+                                    childId: record.child_id,
+                                    date: record.date,
+                                    title: '🏫 施設利用',
+                                    time: displayTime,
+                                    description: displayDescription,
+                                    type: 'attendance_record' as const,
+                                    attendanceRecord: {
+                                        id: record.id,
+                                        childId: record.child_id,
+                                        date: record.date,
+                                        usageStartTime: record.actual_arrival_time?.slice(0, 5),
+                                        usageEndTime: record.actual_departure_time?.slice(0, 5),
+                                        childCondition: childCondition,
+                                        activities: activities,
+                                        recordedBy: '施設スタッフ',
+                                        recordedAt: record.created_at
+                                    }
+                                };
+                            }
+                        });
+
+                        // 既存のカレンダーイベントと出席記録・予定イベントを統合
+                        allEvents = [...allEvents, ...attendanceEvents];
+                        console.log('✅ 出席記録・予定をカレンダーに統合しました:', attendanceEvents.length, '件');
                     }
                 }
             }
+
+            // 最終的にすべてのイベントを設定
+            setCalendarEvents(allEvents);
 
         } catch (error) {
             console.log('Supabaseデータの読み込みエラー（オフラインモード）:', error);
@@ -371,6 +435,93 @@ export const RecordProvider: React.FC<RecordProviderProps> = ({ children }) => {
     const migrateFromLocalStorage = async (): Promise<void> => {
         // 何もしない（既にローカルストレージを使用）
         setIsDataMigrated(true);
+    };
+
+    // 出席記録・予定を再読み込み（子供が変更された時に呼ばれる）
+    const refreshAttendanceRecords = async (childId: string) => {
+        if (!childId) return;
+
+        try {
+            console.log('🔄 出席記録・予定の再読み込み開始...', { childId });
+
+            const { data: attendanceData, error: attendanceError } = await supabase
+                .from('attendance_schedules')
+                .select('*')
+                .eq('child_id', childId)
+                .order('date', { ascending: false })
+                .limit(60);
+
+            if (attendanceError) {
+                console.error('出席記録データの再読み込みエラー:', attendanceError);
+                return;
+            }
+
+            if (attendanceData) {
+                console.log('✅ 出席記録・予定を再読み込みしました:', attendanceData.length, '件');
+                setAttendanceRecords(attendanceData);
+
+                // 出席記録と予定をカレンダーイベントに変換
+                const attendanceEvents = attendanceData.map(record => {
+                    const isScheduled = record.attendance_status === 'scheduled';
+                    const { childCondition, activities } = parseAttendanceNotes(record.notes || '');
+
+                    if (isScheduled) {
+                        // 出席予定
+                        return {
+                            id: `attendance_schedule_${record.id}`,
+                            childId: record.child_id,
+                            date: record.date,
+                            title: '🏫 登園予定',
+                            time: record.scheduled_arrival_time?.slice(0, 5),
+                            description: `${record.scheduled_arrival_time?.slice(0, 5) || ''} 〜 ${record.scheduled_departure_time?.slice(0, 5) || ''}`,
+                            type: 'attendance_schedule' as const,
+                            priority: 'normal' as const
+                        };
+                    } else {
+                        // 出席記録（カレンダーには予定時刻を表示）
+                        const scheduledStart = record.scheduled_arrival_time?.slice(0, 5);
+                        const scheduledEnd = record.scheduled_departure_time?.slice(0, 5);
+                        const displayTime = scheduledStart || record.actual_arrival_time?.slice(0, 5);
+                        const displayDescription = (scheduledStart && scheduledEnd)
+                            ? `${scheduledStart} 〜 ${scheduledEnd} 施設利用予定`
+                            : '施設利用';
+
+                        return {
+                            id: `attendance_${record.id}`,
+                            childId: record.child_id,
+                            date: record.date,
+                            title: '🏫 施設利用',
+                            time: displayTime,
+                            description: displayDescription,
+                            type: 'attendance_record' as const,
+                            attendanceRecord: {
+                                id: record.id,
+                                childId: record.child_id,
+                                date: record.date,
+                                usageStartTime: record.actual_arrival_time?.slice(0, 5),
+                                usageEndTime: record.actual_departure_time?.slice(0, 5),
+                                childCondition: childCondition,
+                                activities: activities,
+                                recordedBy: '施設スタッフ',
+                                recordedAt: record.created_at
+                            }
+                        };
+                    }
+                });
+
+                // 既存のカレンダーイベントから出席記録・予定を除外し、新しいものを追加
+                setCalendarEvents(prevEvents => {
+                    const nonAttendanceEvents = prevEvents.filter(event =>
+                        event.type !== 'attendance_record' && event.type !== 'attendance_schedule'
+                    );
+                    return [...nonAttendanceEvents, ...attendanceEvents];
+                });
+
+                console.log('✅ 出席記録・予定をカレンダーに統合しました:', attendanceEvents.length, '件');
+            }
+        } catch (error) {
+            console.error('出席記録の再読み込みエラー:', error);
+        }
     };
 
     const updateSelectedDate = (date: Date) => {

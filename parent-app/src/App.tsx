@@ -6,7 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import RecordButton from './components/RecordButton';
 import GrowthRecords from './components/GrowthRecords';
 import { compressImage } from './utils/imageUtils';
-import { directChatApi, announcementApi } from './lib/supabase';
+import { supabase, directChatApi, announcementApi } from './lib/supabase';
 
 import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
@@ -128,10 +128,11 @@ function AppContent() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records'>('home');
-  
+
   // 施設からの記録関連
   const [facilityRecords, setFacilityRecords] = useState<any[]>([]);
   const [loadingFacilityRecords, setLoadingFacilityRecords] = useState(false);
+  const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
   const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'monthly'>('month');
   const [isChildSettingsOpen, setIsChildSettingsOpen] = useState(false);
   const [childName, setChildName] = useState('');
@@ -169,10 +170,16 @@ function AppContent() {
     try {
       console.log('🔍 施設の出席記録を取得中...', { user_id: user.id, child_id: activeChildId });
 
+      console.log('📊 クエリパラメータ:', {
+        child_id: activeChildId,
+        attendance_status: 'present'
+      });
+
       const { data, error } = await supabase
         .from('attendance_schedules')
         .select('*')
         .eq('child_id', activeChildId)
+        .eq('attendance_status', 'present') // 出席記録のみを表示（予定は除外）
         .order('date', { ascending: false });
 
       if (error) {
@@ -182,6 +189,7 @@ function AppContent() {
       }
 
       console.log(`✅ 施設記録取得成功: ${data?.length || 0}件`);
+      console.log('📋 取得したデータ:', data);
       setFacilityRecords(data || []);
     } catch (error) {
       console.error('❌ 施設記録取得エラー:', error);
@@ -2163,103 +2171,124 @@ ${userMessage}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {facilityRecords.map((record) => (
-                    <div key={record.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                      {/* 日付 */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-2">
-                          <Calendar className="w-5 h-5 text-blue-500" />
-                          <span className="font-semibold text-gray-800">
-                            {new Date(record.date).toLocaleDateString('ja-JP', { 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric',
-                              weekday: 'short'
-                            })}
-                          </span>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          record.attendance_status === 'present' ? 'bg-green-100 text-green-700' :
-                          record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
-                          record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {record.attendance_status === 'present' ? '出席' :
-                           record.attendance_status === 'absent' ? '欠席' :
-                           record.attendance_status === 'late' ? '遅刻' :
-                           record.attendance_status === 'early_departure' ? '早退' :
-                           '予定'}
-                        </span>
-                      </div>
-
-                      {/* 時間 */}
-                      {(record.actual_arrival_time || record.actual_departure_time) && (
-                        <div className="bg-blue-50 rounded-xl p-3 mb-4">
-                          <div className="flex items-center justify-between text-sm">
-                            {record.actual_arrival_time && (
-                              <div className="flex items-center space-x-2">
-                                <span className="text-blue-600 font-medium">登園</span>
-                                <span className="text-gray-700">{record.actual_arrival_time}</span>
-                              </div>
-                            )}
-                            {record.actual_departure_time && (
-                              <div className="flex items-center space-x-2">
-                                <span className="text-blue-600 font-medium">降園</span>
-                                <span className="text-gray-700">{record.actual_departure_time}</span>
-                              </div>
-                            )}
+                <div className="space-y-2">
+                  {facilityRecords.map((record, index) => (
+                    <div key={record.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                      {/* シンプルなリストアイテム */}
+                      <button
+                        onClick={() => setExpandedRecordId(expandedRecordId === record.id ? null : record.id)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+                            {index + 1}
                           </div>
-                        </div>
-                      )}
-
-                      {/* 記録内容 */}
-                      {record.notes && (
-                        <div className="space-y-3">
-                          <div className="prose prose-sm max-w-none">
-                            <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                              {record.notes}
+                          <div className="text-left">
+                            <div className="font-semibold text-gray-900">
+                              {new Date(record.date).toLocaleDateString('ja-JP', {
+                                month: 'long',
+                                day: 'numeric',
+                                weekday: 'short'
+                              })}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {record.actual_arrival_time && `${record.actual_arrival_time.slice(0, 5)}登園`}
+                              {record.actual_arrival_time && record.actual_departure_time && ' • '}
+                              {record.actual_departure_time && `${record.actual_departure_time.slice(0, 5)}降園`}
                             </div>
                           </div>
                         </div>
-                      )}
-
-                      {/* 気分・食事記録 */}
-                      {(record.mood_rating || record.lunch_status || record.snack_status) && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                          <div className="flex flex-wrap gap-3">
-                            {record.mood_rating && (
-                              <div className="flex items-center space-x-2 bg-yellow-50 px-3 py-2 rounded-lg">
-                                <span className="text-yellow-600">😊</span>
-                                <span className="text-sm text-gray-700">
-                                  機嫌: {record.mood_rating}/5
-                                </span>
-                              </div>
-                            )}
-                            {record.lunch_status && (
-                              <div className="flex items-center space-x-2 bg-orange-50 px-3 py-2 rounded-lg">
-                                <span className="text-orange-600">🍱</span>
-                                <span className="text-sm text-gray-700">
-                                  給食: {record.lunch_status}
-                                </span>
-                              </div>
-                            )}
-                            {record.snack_status && (
-                              <div className="flex items-center space-x-2 bg-pink-50 px-3 py-2 rounded-lg">
-                                <span className="text-pink-600">🍪</span>
-                                <span className="text-sm text-gray-700">
-                                  おやつ: {record.snack_status}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${record.attendance_status === 'present' ? 'bg-green-100 text-green-700' :
+                              record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
+                                record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-700'
+                            }`}>
+                            {record.attendance_status === 'present' ? '出席' :
+                              record.attendance_status === 'absent' ? '欠席' :
+                                record.attendance_status === 'late' ? '遅刻' :
+                                  record.attendance_status === 'early_departure' ? '早退' :
+                                    '予定'}
+                          </span>
+                          <ChevronRight
+                            className={`w-5 h-5 text-gray-400 transition-transform ${expandedRecordId === record.id ? 'rotate-90' : ''
+                              }`}
+                          />
                         </div>
-                      )}
+                      </button>
 
-                      {/* 記録者 */}
-                      {record.created_by_name && (
-                        <div className="mt-4 text-xs text-gray-400 text-right">
-                          記録者: {record.created_by_name}
+                      {/* 詳細（展開時のみ表示） */}
+                      {expandedRecordId === record.id && (
+                        <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-gray-50">
+                          {/* 時間詳細 */}
+                          {(record.actual_arrival_time || record.actual_departure_time) && (
+                            <div className="bg-white rounded-lg p-3 mb-3">
+                              <div className="flex items-center justify-between text-sm">
+                                {record.actual_arrival_time && (
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className="w-4 h-4 text-blue-500" />
+                                    <span className="text-gray-600">登園</span>
+                                    <span className="font-medium text-gray-900">{record.actual_arrival_time}</span>
+                                  </div>
+                                )}
+                                {record.actual_departure_time && (
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className="w-4 h-4 text-orange-500" />
+                                    <span className="text-gray-600">降園</span>
+                                    <span className="font-medium text-gray-900">{record.actual_departure_time}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 記録内容 */}
+                          {record.notes && (
+                            <div className="bg-white rounded-lg p-3 mb-3">
+                              <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                {record.notes}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 気分・食事記録 */}
+                          {(record.mood_rating || record.lunch_status || record.snack_status) && (
+                            <div className="bg-white rounded-lg p-3">
+                              <div className="flex flex-wrap gap-2">
+                                {record.mood_rating && (
+                                  <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-lg">
+                                    <span className="text-yellow-600">😊</span>
+                                    <span className="text-xs text-gray-700">
+                                      機嫌: {record.mood_rating}/5
+                                    </span>
+                                  </div>
+                                )}
+                                {record.lunch_status && (
+                                  <div className="flex items-center space-x-1 bg-orange-50 px-2 py-1 rounded-lg">
+                                    <span className="text-orange-600">🍱</span>
+                                    <span className="text-xs text-gray-700">
+                                      給食: {record.lunch_status}
+                                    </span>
+                                  </div>
+                                )}
+                                {record.snack_status && (
+                                  <div className="flex items-center space-x-1 bg-pink-50 px-2 py-1 rounded-lg">
+                                    <span className="text-pink-600">🍪</span>
+                                    <span className="text-xs text-gray-700">
+                                      おやつ: {record.snack_status}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 記録者 */}
+                          {record.created_by_name && (
+                            <div className="mt-2 text-xs text-gray-400 text-right">
+                              記録者: {record.created_by_name}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

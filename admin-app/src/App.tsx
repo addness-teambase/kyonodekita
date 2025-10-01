@@ -287,6 +287,7 @@ const App: React.FC = () => {
   });
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [selectedChildForAttendance, setSelectedChildForAttendance] = useState<string | null>(null);
+  const [editingAttendanceRecordId, setEditingAttendanceRecordId] = useState<string | null>(null); // 編集中のレコードID
   const [newAttendanceRecord, setNewAttendanceRecord] = useState({
     date: new Date().toISOString().split('T')[0],
     usageStartTime: '',
@@ -295,6 +296,14 @@ const App: React.FC = () => {
     activities: '',
     recordedBy: '管理者'
   });
+
+  // 出席記録履歴関連
+  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyFilterChildId, setHistoryFilterChildId] = useState<string>('all');
+  const [historyDateFrom, setHistoryDateFrom] = useState('');
+  const [historyDateTo, setHistoryDateTo] = useState('');
+  const [todaySchedules, setTodaySchedules] = useState<any[]>([]);
   const [expandedChild, setExpandedChild] = useState<string | null>(null);
   const [showEditChildModal, setShowEditChildModal] = useState(false);
   const [editingChild, setEditingChild] = useState<ChildData | null>(null);
@@ -327,6 +336,55 @@ const App: React.FC = () => {
       setTempFacilityInfo(newFacilityInfo);
     }
   }, [user]);
+
+  // 出席記録ページを開いた時に履歴と今日の予定を読み込む
+  useEffect(() => {
+    if (currentView === 'attendance' && user) {
+      loadAttendanceHistory();
+      loadTodaySchedules();
+    }
+  }, [currentView, user, historyFilterChildId, historyDateFrom, historyDateTo]);
+
+  // 今日の出席予定を取得
+  const loadTodaySchedules = async () => {
+    if (!user) {
+      console.log('⚠️ ユーザー情報がありません');
+      return;
+    }
+
+    try {
+      const facilityId = await getOrCreateAdminFacilityId();
+      console.log('🏢 Facility ID:', facilityId);
+
+      if (!facilityId) {
+        console.log('⚠️ 施設IDが取得できませんでした');
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      console.log('📅 今日の日付:', today);
+
+      const { data, error } = await supabase
+        .from('attendance_schedules')
+        .select('*, children(name, age)')
+        .eq('facility_id', facilityId)
+        .eq('date', today)
+        .in('attendance_status', ['scheduled', 'present', 'late'])
+        .order('scheduled_arrival_time', { ascending: true });
+
+      if (error) {
+        console.error('❌ 今日の予定取得エラー:', error);
+        return;
+      }
+
+      console.log('📊 取得したデータ:', data);
+      console.log('👥 取得した園児数:', data?.length || 0);
+      setTodaySchedules(data || []);
+      console.log('✅ 今日の予定:', data?.length || 0, '人');
+    } catch (error) {
+      console.error('❌ 今日の予定取得エラー:', error);
+    }
+  };
 
   // 設定情報を保存
   const saveFacilityInfo = async () => {
@@ -1887,10 +1945,104 @@ const App: React.FC = () => {
     }
   };
 
+  // 出席記録モーダルを閉じる
+  const closeAttendanceModal = () => {
+    setShowAttendanceModal(false);
+    setSelectedChildForAttendance(null);
+    setEditingAttendanceRecordId(null);
+    setNewAttendanceRecord({
+      date: new Date().toISOString().split('T')[0],
+      usageStartTime: '',
+      usageEndTime: '',
+      childCondition: '',
+      activities: '',
+      recordedBy: '管理者'
+    });
+  };
+
   // 出席記録開始
-  const startAttendanceRecord = (childId: string) => {
+  const startAttendanceRecord = async (childId: string) => {
+    console.log('🎯 出席記録開始:', childId);
     setSelectedChildForAttendance(childId);
+
+    try {
+      // 既存のレコードを取得
+      const facilityId = await getOrCreateAdminFacilityId();
+      const today = new Date().toISOString().split('T')[0];
+
+      const { data: existingRecord, error } = await supabase
+        .from('attendance_schedules')
+        .select('*')
+        .eq('child_id', childId)
+        .eq('facility_id', facilityId)
+        .eq('date', today)
+        .eq('attendance_status', 'present')
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('既存レコード取得エラー:', error);
+      }
+
+      if (existingRecord) {
+        console.log('✅ 既存レコードを取得しました:', existingRecord);
+
+        // notesから本人の様子と活動内容を抽出
+        const notes = existingRecord.notes || '';
+        const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*?)\n\n【活動内容】/);
+        const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*)/);
+
+        setEditingAttendanceRecordId(existingRecord.id);
+        setNewAttendanceRecord({
+          date: existingRecord.date,
+          usageStartTime: existingRecord.actual_arrival_time?.slice(0, 5) || '',
+          usageEndTime: existingRecord.actual_departure_time?.slice(0, 5) || '',
+          childCondition: childConditionMatch ? childConditionMatch[1].trim() : '',
+          activities: activitiesMatch ? activitiesMatch[1].trim() : '',
+          recordedBy: '管理者'
+        });
+      } else {
+        console.log('📝 新規レコードを作成します');
+
+        // 予定レコードがあるか確認
+        const { data: scheduledRecord } = await supabase
+          .from('attendance_schedules')
+          .select('*')
+          .eq('child_id', childId)
+          .eq('facility_id', facilityId)
+          .eq('date', today)
+          .eq('attendance_status', 'scheduled')
+          .maybeSingle();
+
+        if (scheduledRecord) {
+          console.log('✅ 予定レコードを取得しました。予定時刻を引き継ぎます:', scheduledRecord);
+          // 予定レコードを編集モードで開く（予定→出席記録に変換）
+          setEditingAttendanceRecordId(scheduledRecord.id);
+          setNewAttendanceRecord({
+            date: today,
+            usageStartTime: scheduledRecord.scheduled_arrival_time?.slice(0, 5) || '',
+            usageEndTime: scheduledRecord.scheduled_departure_time?.slice(0, 5) || '',
+            childCondition: '',
+            activities: '',
+            recordedBy: '管理者'
+          });
+        } else {
+          setEditingAttendanceRecordId(null);
+          setNewAttendanceRecord({
+            date: today,
+            usageStartTime: '',
+            usageEndTime: '',
+            childCondition: '',
+            activities: '',
+            recordedBy: '管理者'
+          });
+        }
+      }
+    } catch (error) {
+      console.error('出席記録準備エラー:', error);
+    }
+
     setShowAttendanceModal(true);
+    console.log('✅ モーダルを開きます');
   };
 
   // 出席記録保存
@@ -1901,20 +2053,60 @@ const App: React.FC = () => {
       // 詳細記録を notes フィールドに結合して保存
       const notes = `【本人の様子】\n${newAttendanceRecord.childCondition}\n\n【活動内容】\n${newAttendanceRecord.activities}`;
 
-      // Supabaseに出席記録を保存
-      const { data, error } = await supabase
-        .from('attendance_schedules')
-        .insert({
-          child_id: selectedChildForAttendance,
-          date: newAttendanceRecord.date,
-          actual_arrival_time: newAttendanceRecord.usageStartTime || null,
-          actual_departure_time: newAttendanceRecord.usageEndTime || null,
-          attendance_status: 'present',
-          notes: notes,
-          created_by: newAttendanceRecord.recordedBy
-        })
-        .select()
-        .single();
+      // facility_idを取得
+      const facilityId = await getOrCreateAdminFacilityId();
+
+      // facility_usersテーブルから管理者のfacility_user_idを取得
+      const { data: facilityUserData } = await supabase
+        .from('facility_users')
+        .select('id')
+        .eq('user_id', user?.id)
+        .eq('facility_id', facilityId)
+        .maybeSingle();
+
+      let data, error;
+
+      if (editingAttendanceRecordId) {
+        // 既存レコードを更新（予定→出席記録への変換も含む）
+        console.log('📝 既存レコードを更新します:', editingAttendanceRecordId);
+        const result = await supabase
+          .from('attendance_schedules')
+          .update({
+            actual_arrival_time: newAttendanceRecord.usageStartTime || null,
+            actual_departure_time: newAttendanceRecord.usageEndTime || null,
+            attendance_status: 'present', // 予定から出席記録に変換
+            notes: notes,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingAttendanceRecordId)
+          .select()
+          .single();
+
+        data = result.data;
+        error = result.error;
+      } else {
+        // 新規レコードを挿入
+        console.log('✨ 新規レコードを作成します');
+        const result = await supabase
+          .from('attendance_schedules')
+          .insert({
+            child_id: selectedChildForAttendance,
+            facility_id: facilityId,
+            date: newAttendanceRecord.date,
+            scheduled_arrival_time: newAttendanceRecord.usageStartTime || null, // 予定時刻として保存
+            scheduled_departure_time: newAttendanceRecord.usageEndTime || null, // 予定時刻として保存
+            actual_arrival_time: newAttendanceRecord.usageStartTime || null,
+            actual_departure_time: newAttendanceRecord.usageEndTime || null,
+            attendance_status: 'present',
+            notes: notes,
+            created_by: facilityUserData?.id || null
+          })
+          .select()
+          .single();
+
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) {
         console.log('Supabaseエラー:', error);
@@ -1940,22 +2132,100 @@ const App: React.FC = () => {
         alert('出席記録をローカルに保存しました！');
       } else {
         console.log('✅ Supabase出席記録保存成功:', data);
-        alert('出席記録を保存しました！');
+        alert(editingAttendanceRecordId ? '出席記録を更新しました！' : '出席記録を保存しました！');
+        // 履歴と今日の予定を再読み込み
+        loadAttendanceHistory();
+        loadTodaySchedules();
       }
 
-      setShowAttendanceModal(false);
-      setSelectedChildForAttendance(null);
-      setNewAttendanceRecord({
-        date: new Date().toISOString().split('T')[0],
-        usageStartTime: '',
-        usageEndTime: '',
-        childCondition: '',
-        activities: '',
-        recordedBy: '管理者'
-      });
+      closeAttendanceModal();
     } catch (error) {
       console.error('出席記録保存エラー:', error);
       alert('出席記録の保存中にエラーが発生しました。');
+    }
+  };
+
+  // 出席記録を削除
+  const handleDeleteAttendanceRecord = async (recordId: string) => {
+    if (!confirm('この出席記録を削除してもよろしいですか？\nこの操作は取り消せません。')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('attendance_schedules')
+        .delete()
+        .eq('id', recordId);
+
+      if (error) {
+        console.error('❌ 出席記録削除エラー:', error);
+        alert('出席記録の削除に失敗しました');
+        return;
+      }
+
+      console.log('✅ 出席記録を削除しました');
+      alert('出席記録を削除しました');
+
+      // 履歴と今日の予定を再読み込み
+      loadAttendanceHistory();
+      loadTodaySchedules();
+    } catch (error) {
+      console.error('❌ 出席記録削除エラー:', error);
+      alert('出席記録の削除中にエラーが発生しました');
+    }
+  };
+
+  // 出席記録履歴を読み込む
+  const loadAttendanceHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      console.log('🔍 出席記録履歴を取得中...');
+
+      // facilityIdを取得
+      const facilityId = await getOrCreateAdminFacilityId();
+      if (!facilityId) {
+        console.error('施設IDの取得に失敗しました');
+        setAttendanceHistory([]);
+        return;
+      }
+
+      let query = supabase
+        .from('attendance_schedules')
+        .select('*, children(name, age)')
+        .eq('facility_id', facilityId)
+        .order('date', { ascending: false });
+
+      // 子供でフィルタリング
+      if (historyFilterChildId !== 'all') {
+        query = query.eq('child_id', historyFilterChildId);
+      }
+
+      // 日付範囲でフィルタリング
+      if (historyDateFrom) {
+        query = query.gte('date', historyDateFrom);
+      }
+      if (historyDateTo) {
+        query = query.lte('date', historyDateTo);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('❌ 出席記録履歴取得エラー:', error);
+
+        // ローカルストレージからフォールバック
+        const localRecords = JSON.parse(localStorage.getItem('admin-attendance-records') || '[]');
+        setAttendanceHistory(localRecords);
+        return;
+      }
+
+      console.log(`✅ 出席記録履歴取得成功: ${data?.length || 0}件`);
+      setAttendanceHistory(data || []);
+    } catch (error) {
+      console.error('❌ 出席記録履歴取得エラー:', error);
+      setAttendanceHistory([]);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -2042,56 +2312,299 @@ const App: React.FC = () => {
 
 
       case 'attendance':
+        // 今日の予定者のみを表示
+        console.log('📋 出席記録ページ表示:', {
+          todaySchedulesCount: todaySchedules.length,
+          childrenCount: children.length,
+          todaySchedules,
+          children
+        });
+        const scheduledChildIds = todaySchedules.map(s => s.child_id);
+        const scheduledChildren = children.filter(c => scheduledChildIds.includes(c.id));
+        console.log('🎯 表示する園児:', scheduledChildren.length, '人', scheduledChildren);
+
         return (
           <div className="space-y-6">
-            {/* 今日の出席記録 */}
+            {/* 今日来る予定の園児 */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
               <div className="p-6 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-900">本日の出席記録</h2>
-                <p className="text-sm text-gray-500 mt-1">子供たちの出席・活動記録を管理できます</p>
-              </div>
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {children.map((child, index) => (
-                    <div
-                      key={child.id}
-                      className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100 hover:shadow-lg transition-all duration-300 hover:scale-[1.02]"
-                      style={{
-                        animationDelay: `${index * 100}ms`
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-400 rounded-2xl flex items-center justify-center shadow-md">
-                            <span className="text-white font-bold text-sm">{child.avatar}</span>
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{child.name}</h3>
-                            <p className="text-sm text-gray-500">{child.age}歳</p>
-                          </div>
-                        </div>
-                        <div className="w-3 h-3 bg-green-400 rounded-full shadow-sm"></div>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">本日の出席予定</h2>
+                    <p className="text-sm text-gray-600">
+                      {scheduledChildren.length === 0
+                        ? 'まだ予定が登録されていません。カレンダーから出席予定を追加してください。'
+                        : `${scheduledChildren.length}人が来園予定です。各園児の「出席確認」ボタンをクリックして記録しましょう。`
+                      }
+                    </p>
+                  </div>
+                  {scheduledChildren.length > 0 && (
+                    <div className="text-right ml-4">
+                      <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold mb-2 text-sm">
+                        予定: {scheduledChildren.length}人
                       </div>
-
-                      <div className="space-y-2 mb-4">
-                        <p className="text-sm text-gray-600">
-                          <span className="font-medium">保護者:</span> {child.parentName}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          <span className="font-medium">今日の記録:</span> {child.todayRecords}件
-                        </p>
+                      <div className="bg-green-100 text-green-700 px-4 py-2 rounded-xl font-bold text-sm">
+                        出席済: {todaySchedules.filter(s => s.attendance_status === 'present').length}人
                       </div>
-
-                      <button
-                        onClick={() => startAttendanceRecord(child.id)}
-                        className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-4 py-3 rounded-xl text-sm font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 flex items-center justify-center"
-                      >
-                        <BookOpen className="w-4 h-4 mr-2" />
-                        出席・活動記録を追加
-                      </button>
                     </div>
-                  ))}
+                  )}
                 </div>
+              </div>
+
+              {scheduledChildren.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Users className="w-10 h-10 text-blue-500" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">今日の出席予定がありません</h3>
+                  <p className="text-gray-600 mb-6">カレンダーから出席予定を追加してください</p>
+                  <button
+                    onClick={() => setCurrentView('calendar')}
+                    className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200"
+                  >
+                    カレンダーを開く
+                  </button>
+                </div>
+              ) : (
+                <div className="p-6">
+                  {/* 出席登録の流れを説明 */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5 mb-6">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 text-white rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
+                        <span className="text-sm font-bold">!</span>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-blue-900 mb-2 text-lg">出席確認の手順</h3>
+                        <ol className="text-sm text-blue-800 space-y-2">
+                          <li className="flex items-start">
+                            <span className="font-bold mr-2">①</span>
+                            <span>園児が登園したら「出席確認」ボタンをクリック</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="font-bold mr-2">②</span>
+                            <span>実際の登園時刻を入力（予定時刻が自動入力されます）</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="font-bold mr-2">③</span>
+                            <span>本人の様子と活動内容を記録</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="font-bold mr-2">④</span>
+                            <span>保存すると保護者のカレンダーに自動で反映されます 🎉</span>
+                          </li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {scheduledChildren.map((child, index) => {
+                      const schedule = todaySchedules.find(s => s.child_id === child.id);
+                      const isPresent = schedule?.attendance_status === 'present';
+
+                      return (
+                        <div
+                          key={child.id}
+                          className={`rounded-2xl p-6 border-2 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] ${isPresent
+                            ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-300'
+                            : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200'
+                            }`}
+                          style={{
+                            animationDelay: `${index * 100}ms`
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-md ${isPresent
+                                ? 'bg-gradient-to-br from-green-400 via-green-500 to-emerald-400'
+                                : 'bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-400'
+                                }`}>
+                                <span className="text-white font-bold text-sm">{child.avatar}</span>
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-gray-900">{child.name}</h3>
+                                <p className="text-sm text-gray-500">{child.age}歳</p>
+                              </div>
+                            </div>
+                            <div className={`px-3 py-1 rounded-full text-xs font-bold ${isPresent
+                              ? 'bg-green-500 text-white'
+                              : 'bg-blue-100 text-blue-700'
+                              }`}>
+                              {isPresent ? '出席済' : '予定'}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            <p className="text-sm text-gray-600">
+                              <span className="font-medium">保護者:</span> {child.parentName}
+                            </p>
+                            {schedule?.scheduled_arrival_time && (
+                              <p className="text-sm text-blue-600 flex items-center space-x-1">
+                                <Clock className="w-4 h-4" />
+                                <span>予定: {schedule.scheduled_arrival_time.slice(0, 5)}</span>
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => startAttendanceRecord(child.id)}
+                            className={`w-full px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center shadow-sm ${isPresent
+                              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+                              : 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 shadow-md hover:shadow-lg'
+                              }`}
+                          >
+                            <BookOpen className="w-5 h-5 mr-2" />
+                            {isPresent ? '記録を編集する' : '出席確認する'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+
+            {/* 出席記録履歴 */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              <div className="p-6 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">出席記録履歴</h2>
+
+                {/* フィルター */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">子供で絞り込み</label>
+                    <select
+                      value={historyFilterChildId}
+                      onChange={(e) => setHistoryFilterChildId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">全員</option>
+                      {children.map((child) => (
+                        <option key={child.id} value={child.id}>
+                          {child.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">開始日</label>
+                    <input
+                      type="date"
+                      value={historyDateFrom}
+                      onChange={(e) => setHistoryDateFrom(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">終了日</label>
+                    <input
+                      type="date"
+                      value={historyDateTo}
+                      onChange={(e) => setHistoryDateTo(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                      <p className="text-gray-500">読み込み中...</p>
+                    </div>
+                  </div>
+                ) : attendanceHistory.length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500 mb-2">記録がありません</p>
+                      <p className="text-sm text-gray-400">出席記録を追加すると、ここに表示されます</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {attendanceHistory.map((record) => {
+                      const childData = children.find((c) => c.id === record.child_id);
+                      const childName = record.children?.name || childData?.name || '不明';
+
+                      return (
+                        <div
+                          key={record.id}
+                          className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-xl p-5 border border-gray-200 hover:shadow-md transition-all"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center shadow-sm">
+                                <span className="text-white font-bold text-sm">
+                                  {childName.charAt(0)}
+                                </span>
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-gray-900">{childName}</h3>
+                                <p className="text-sm text-gray-500">
+                                  {new Date(record.date).toLocaleDateString('ja-JP', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    weekday: 'short'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${record.attendance_status === 'present' ? 'bg-green-100 text-green-700' :
+                                record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
+                                  record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-gray-100 text-gray-700'
+                                }`}>
+                                {record.attendance_status === 'present' ? '出席' :
+                                  record.attendance_status === 'absent' ? '欠席' :
+                                    record.attendance_status === 'late' ? '遅刻' :
+                                      record.attendance_status === 'early_departure' ? '早退' :
+                                        '予定'}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteAttendanceRecord(record.id)}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                title="この記録を削除"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {(record.actual_arrival_time || record.actual_departure_time) && (
+                            <div className="bg-white rounded-lg p-3 mb-3">
+                              <div className="flex items-center space-x-4 text-sm">
+                                {record.actual_arrival_time && (
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className="w-4 h-4 text-blue-500" />
+                                    <span className="text-gray-600">登園: {record.actual_arrival_time.slice(0, 5)}</span>
+                                  </div>
+                                )}
+                                {record.actual_departure_time && (
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className="w-4 h-4 text-orange-500" />
+                                    <span className="text-gray-600">降園: {record.actual_departure_time.slice(0, 5)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {record.notes && (
+                            <div className="bg-white rounded-lg p-4">
+                              <div className="text-sm text-gray-700 whitespace-pre-wrap">{record.notes}</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3838,123 +4351,129 @@ const App: React.FC = () => {
       )}
 
       {/* 出席記録モーダル */}
-      {showAttendanceModal && selectedChildForAttendance && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center">
-                    <BookOpen className="w-6 h-6 text-white" />
+      {(() => {
+        console.log('📊 モーダル状態チェック:', { showAttendanceModal, selectedChildForAttendance });
+        return showAttendanceModal && selectedChildForAttendance;
+      })() && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center">
+                      <BookOpen className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">
+                        {editingAttendanceRecordId ? '出席・活動記録を編集' : '出席・活動記録'}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {children.find(c => c.id === selectedChildForAttendance)?.name}さんの記録
+                        {editingAttendanceRecordId && <span className="ml-2 text-blue-600">（既存の記録を編集中）</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeAttendanceModal}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">日付</label>
+                    <input
+                      type="date"
+                      value={newAttendanceRecord.date}
+                      onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, date: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                    />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">出席・活動記録</h3>
-                    <p className="text-sm text-gray-500">
-                      {children.find(c => c.id === selectedChildForAttendance)?.name}さんの記録
-                    </p>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">記録者</label>
+                    <input
+                      type="text"
+                      value={newAttendanceRecord.recordedBy}
+                      onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, recordedBy: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="管理者"
+                    />
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowAttendanceModal(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
 
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">日付</label>
-                  <input
-                    type="date"
-                    value={newAttendanceRecord.date}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, date: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Clock className="w-4 h-4 inline mr-1" />
+                      利用開始時間
+                    </label>
+                    <input
+                      type="time"
+                      value={newAttendanceRecord.usageStartTime}
+                      onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, usageStartTime: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Clock className="w-4 h-4 inline mr-1" />
+                      利用終了時間
+                    </label>
+                    <input
+                      type="time"
+                      value={newAttendanceRecord.usageEndTime}
+                      onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, usageEndTime: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">記録者</label>
-                  <input
-                    type="text"
-                    value={newAttendanceRecord.recordedBy}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, recordedBy: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                    placeholder="管理者"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Clock className="w-4 h-4 inline mr-1" />
-                    利用開始時間
-                  </label>
-                  <input
-                    type="time"
-                    value={newAttendanceRecord.usageStartTime}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, usageStartTime: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
+                  <textarea
+                    value={newAttendanceRecord.childCondition}
+                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
+                    placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
                   />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <Clock className="w-4 h-4 inline mr-1" />
-                    利用終了時間
-                  </label>
-                  <input
-                    type="time"
-                    value={newAttendanceRecord.usageEndTime}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, usageEndTime: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">活動内容</label>
+                  <textarea
+                    value={newAttendanceRecord.activities}
+                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, activities: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
+                    placeholder="今日行った活動や遊び、学習内容などを記録してください..."
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
-                <textarea
-                  value={newAttendanceRecord.childCondition}
-                  onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
-                  placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">活動内容</label>
-                <textarea
-                  value={newAttendanceRecord.activities}
-                  onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, activities: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
-                  placeholder="今日行った活動や遊び、学習内容などを記録してください..."
-                />
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-200">
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowAttendanceModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-2xl font-medium hover:bg-gray-300 transition-all duration-200"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={handleSaveAttendanceRecord}
-                  disabled={!newAttendanceRecord.childCondition.trim() || !newAttendanceRecord.activities.trim()}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-3 rounded-2xl font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <BookOpen className="w-4 h-4 inline mr-2" />
-                  記録を保存
-                </button>
+              <div className="p-6 border-t border-gray-200">
+                <div className="flex space-x-3">
+                  <button
+                    onClick={closeAttendanceModal}
+                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-2xl font-medium hover:bg-gray-300 transition-all duration-200"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSaveAttendanceRecord}
+                    disabled={!newAttendanceRecord.childCondition.trim() || !newAttendanceRecord.activities.trim()}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-3 rounded-2xl font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <BookOpen className="w-4 h-4 inline mr-2" />
+                    {editingAttendanceRecordId ? '記録を更新' : '記録を保存'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* 園児編集モーダル */}
       {showEditChildModal && editingChild && (

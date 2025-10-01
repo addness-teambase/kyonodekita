@@ -31,8 +31,11 @@ export interface CalendarEvent {
   title: string;
   time?: string;
   description?: string;
-  type?: 'attendance_record' | 'event' | 'holiday';
+  type?: 'attendance_record' | 'attendance_schedule' | 'event' | 'holiday';
   attendanceRecord?: AttendanceRecord;
+  priority?: 'normal' | 'high';
+  is_facility_wide?: boolean; // 園全体の予定かどうか
+  facility_user_id?: string; // 管理者が作成した場合
 }
 
 // 出席・活動記録（管理者から受け取る情報）

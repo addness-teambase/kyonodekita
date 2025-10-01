@@ -56,6 +56,14 @@ const CalendarView: React.FC = () => {
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(false);
 
+    // 出席予定登録用
+    const [isAddAttendanceScheduleModalOpen, setIsAddAttendanceScheduleModalOpen] = useState(false);
+    const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
+    const [children, setChildren] = useState<any[]>([]);
+    const [scheduledArrivalTime, setScheduledArrivalTime] = useState('');
+    const [scheduledDepartureTime, setScheduledDepartureTime] = useState('');
+    const [childSearchQuery, setChildSearchQuery] = useState('');
+
     // カレンダー日付の生成（月表示用）
     const calendarDays = React.useMemo(() => {
         const start = startOfMonth(selectedDate);
@@ -106,8 +114,11 @@ const CalendarView: React.FC = () => {
             }
 
             console.log('施設データ取得成功:', facilityData);
+            console.log('施設ID:', facilityData.id);
+            console.log('施設ID型:', typeof facilityData.id);
 
             // その施設のカレンダー予定を取得
+            console.log('📅 カレンダー予定を取得中...');
             const { data, error } = await supabase
                 .from('calendar_events')
                 .select('*')
@@ -115,8 +126,11 @@ const CalendarView: React.FC = () => {
                 .order('date', { ascending: true });
 
             if (error) {
-                console.error('予定取得エラー:', error);
-                return;
+                console.error('❌ 予定取得エラー:', error);
+                console.error('エラー詳細:', JSON.stringify(error, null, 2));
+                // エラーがあっても続行（カレンダーは表示する）
+            } else {
+                console.log('✅ 予定取得成功:', data?.length, '件');
             }
 
             const calendarEvents = data?.map(event => ({
@@ -140,8 +154,73 @@ const CalendarView: React.FC = () => {
 
     // 初期化時に予定を読み込む
     useEffect(() => {
-        loadEvents();
+        if (user) {
+            loadEvents();
+            loadChildren();
+        }
     }, [user]);
+
+    // 園児リストを取得
+    const loadChildren = async () => {
+        if (!user) {
+            console.log('⚠️ ユーザー情報がありません');
+            return;
+        }
+
+        try {
+            console.log('👶 園児リスト取得開始...');
+            console.log('管理者ID:', user.id);
+
+            // facility_idを取得（facilitiesテーブルから）
+            const { data: facilityData, error: facilityError } = await supabase
+                .from('facilities')
+                .select('id, name')
+                .eq('admin_user_id', user.id)
+                .maybeSingle();
+
+            console.log('🏢 施設データ:', facilityData);
+            console.log('🏢 施設エラー:', facilityError);
+
+            if (!facilityData?.id) {
+                console.log('⚠️ 施設IDが取得できませんでした');
+                return;
+            }
+
+            // 施設に所属する園児を取得
+            const { data: facilityChildren, error: fcError } = await supabase
+                .from('facility_children')
+                .select('child_id')
+                .eq('facility_id', facilityData.id)
+                .eq('status', 'active');
+
+            console.log('👥 facility_children:', facilityChildren);
+            console.log('👥 facility_children エラー:', fcError);
+
+            if (!facilityChildren || facilityChildren.length === 0) {
+                console.log('⚠️ この施設に園児が登録されていません');
+                return;
+            }
+
+            // 園児の詳細情報を取得
+            const childIds = facilityChildren.map(fc => fc.child_id);
+            console.log('🔍 取得する園児ID:', childIds);
+
+            const { data: childrenData, error: childError } = await supabase
+                .from('children')
+                .select('id, name, age')
+                .in('id', childIds);
+
+            console.log('✅ 園児データ:', childrenData);
+            console.log('❌ 園児エラー:', childError);
+
+            if (childrenData) {
+                setChildren(childrenData);
+                console.log('🎉 園児リスト設定完了:', childrenData.length, '人');
+            }
+        } catch (error) {
+            console.error('❌ 園児リスト取得エラー:', error);
+        }
+    };
 
     // 予定追加モーダルを開く
     const openAddEventModal = () => {
@@ -154,21 +233,119 @@ const CalendarView: React.FC = () => {
         setIsAddEventModalOpen(true);
     };
 
+    // 出席予定追加モーダルを開く
+    const openAddAttendanceScheduleModal = () => {
+        console.log('📝 出席予定追加モーダルを開く');
+        console.log('現在の園児リスト:', children);
+        setSelectedChildren([]);
+        setScheduledArrivalTime('09:00');
+        setScheduledDepartureTime('17:00');
+        setChildSearchQuery(''); // 検索クエリをリセット
+        setIsAddAttendanceScheduleModalOpen(true);
+
+        // 園児リストが空の場合は再読み込み
+        if (children.length === 0) {
+            console.log('⚠️ 園児リストが空です。再読み込みします...');
+            loadChildren();
+        }
+    };
+
+    // 園児の出席予定を登録
+    const handleAddAttendanceSchedule = async () => {
+        if (selectedChildren.length === 0 || !user) return;
+
+        setLoading(true);
+        try {
+            // facility_idを取得（facilitiesテーブルから）
+            const { data: facilityData } = await supabase
+                .from('facilities')
+                .select('id')
+                .eq('admin_user_id', user.id)
+                .maybeSingle();
+
+            if (!facilityData?.id) {
+                alert('施設情報の取得に失敗しました');
+                return;
+            }
+
+            // facility_usersテーブルから管理者のfacility_user_idを取得
+            const { data: facilityUserData } = await supabase
+                .from('facility_users')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('facility_id', facilityData.id)
+                .maybeSingle();
+
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            console.log('📅 出席予定登録:', {
+                date: dateStr,
+                facilityId: facilityData.id,
+                facilityUserId: facilityUserData?.id,
+                childrenCount: selectedChildren.length,
+                arrivalTime: scheduledArrivalTime,
+                departureTime: scheduledDepartureTime
+            });
+
+            // 選択された園児それぞれに対して出席予定を登録
+            const schedules = selectedChildren.map(childId => ({
+                child_id: childId,
+                facility_id: facilityData.id,
+                date: dateStr,
+                scheduled_arrival_time: scheduledArrivalTime || null,
+                scheduled_departure_time: scheduledDepartureTime || null,
+                attendance_status: 'scheduled',
+                created_by: facilityUserData?.id || null
+            }));
+
+            const { error } = await supabase
+                .from('attendance_schedules')
+                .insert(schedules);
+
+            if (error) {
+                console.error('出席予定登録エラー:', error);
+                alert('出席予定の登録に失敗しました');
+                return;
+            }
+
+            setIsAddAttendanceScheduleModalOpen(false);
+            alert(`${selectedChildren.length}人の出席予定を登録しました！`);
+
+            // イベントを再読み込み
+            loadEvents();
+        } catch (error) {
+            console.error('出席予定登録エラー:', error);
+            alert('出席予定の登録中にエラーが発生しました');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 園児選択のトグル
+    const toggleChildSelection = (childId: string) => {
+        setSelectedChildren(prev => {
+            if (prev.includes(childId)) {
+                return prev.filter(id => id !== childId);
+            } else {
+                return [...prev, childId];
+            }
+        });
+    };
+
     // 予定を追加する
     const handleAddEvent = async () => {
         if (!newEventTitle.trim() || !user) return;
 
         setLoading(true);
         try {
-            // 現在のユーザーの施設情報を取得（usersテーブルから）
-            const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('facility_id')
-                .eq('id', user.id)
+            // 現在のユーザーの施設情報を取得（facilitiesテーブルから）
+            const { data: facilityData, error: facilityError } = await supabase
+                .from('facilities')
+                .select('id')
+                .eq('admin_user_id', user.id)
                 .maybeSingle();
 
-            if (userError || !userData || !userData.facility_id) {
-                console.error('施設情報取得エラー:', userError);
+            if (facilityError || !facilityData || !facilityData.id) {
+                console.error('施設情報取得エラー:', facilityError);
                 alert('施設情報の取得に失敗しました。');
                 return;
             }
@@ -177,7 +354,7 @@ const CalendarView: React.FC = () => {
             const { data, error } = await supabase
                 .from('calendar_events')
                 .insert({
-                    facility_id: userData.facility_id,
+                    facility_id: facilityData.id,
                     facility_user_id: user.id,
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     title: newEventTitle,
@@ -267,16 +444,25 @@ const CalendarView: React.FC = () => {
                             <CalendarIcon className="w-6 h-6 text-pink-600" />
                             <div>
                                 <h2 className="text-xl font-bold text-gray-900">カレンダー</h2>
-                                <p className="text-sm text-gray-500 mt-1">園の予定を管理しましょう</p>
+                                <p className="text-sm text-gray-500 mt-1">園の予定と出席予定を管理しましょう</p>
                             </div>
                         </div>
-                        <button
-                            onClick={openAddEventModal}
-                            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span className="text-sm font-medium">予定追加</span>
-                        </button>
+                        <div className="flex items-center space-x-3">
+                            <button
+                                onClick={openAddAttendanceScheduleModal}
+                                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl hover:from-blue-600 hover:to-indigo-600 transition-all duration-200"
+                            >
+                                <Users className="w-4 h-4" />
+                                <span className="text-sm font-medium">出席予定追加</span>
+                            </button>
+                            <button
+                                onClick={openAddEventModal}
+                                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-xl hover:from-pink-600 hover:to-orange-600 transition-all duration-200"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span className="text-sm font-medium">園の予定追加</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -531,6 +717,148 @@ const CalendarView: React.FC = () => {
                                     className="flex-1 bg-gradient-to-r from-pink-500 to-orange-500 text-white py-3 rounded-2xl font-medium hover:from-pink-600 hover:to-orange-600 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200"
                                 >
                                     {loading ? '追加中...' : '追加'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 出席予定追加モーダル */}
+            {isAddAttendanceScheduleModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white rounded-t-3xl">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-900">出席予定追加</h3>
+                                <button
+                                    onClick={() => setIsAddAttendanceScheduleModalOpen(false)}
+                                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-2">
+                                {format(selectedDate, 'M月d日(E)', { locale: ja })} の出席予定
+                            </p>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* 時間設定 */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        登園予定時刻
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={scheduledArrivalTime}
+                                        onChange={(e) => setScheduledArrivalTime(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        降園予定時刻
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={scheduledDepartureTime}
+                                        onChange={(e) => setScheduledDepartureTime(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 園児選択 */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                    来園予定の園児を選択
+                                </label>
+
+                                {/* 検索ボックス */}
+                                {children.length > 0 && (
+                                    <div className="mb-4">
+                                        <input
+                                            type="text"
+                                            placeholder="🔍 園児名で検索..."
+                                            value={childSearchQuery}
+                                            onChange={(e) => setChildSearchQuery(e.target.value)}
+                                            className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 text-sm"
+                                        />
+                                    </div>
+                                )}
+
+                                {children.length === 0 ? (
+                                    <div className="text-center py-8 text-gray-500">
+                                        登録されている園児がいません
+                                    </div>
+                                ) : (
+                                    (() => {
+                                        const filteredChildren = children.filter(child =>
+                                            child.name.toLowerCase().includes(childSearchQuery.toLowerCase())
+                                        );
+
+                                        return filteredChildren.length === 0 ? (
+                                            <div className="text-center py-8 text-gray-500">
+                                                「{childSearchQuery}」に一致する園児が見つかりませんでした
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                                                {filteredChildren.map((child) => (
+                                                    <button
+                                                        key={child.id}
+                                                        onClick={() => toggleChildSelection(child.id)}
+                                                        className={`flex items-center space-x-3 p-4 rounded-2xl border-2 transition-all duration-200 ${selectedChildren.includes(child.id)
+                                                            ? 'border-blue-500 bg-blue-50'
+                                                            : 'border-gray-200 bg-white hover:border-gray-300'
+                                                            }`}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${selectedChildren.includes(child.id)
+                                                            ? 'border-blue-500 bg-blue-500'
+                                                            : 'border-gray-300'
+                                                            }`}>
+                                                            {selectedChildren.includes(child.id) && (
+                                                                <svg className="w-3 h-3 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path d="M5 13l4 4L19 7"></path>
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-left flex-1">
+                                                            <div className="font-medium text-gray-900">{child.name}</div>
+                                                            <div className="text-xs text-gray-500">{child.age}歳</div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()
+                                )}
+                            </div>
+
+                            {selectedChildren.length > 0 && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                                    <p className="text-sm text-blue-700">
+                                        <span className="font-bold">{selectedChildren.length}人</span> の園児が選択されています
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-gray-200 sticky bottom-0 bg-white rounded-b-3xl">
+                            <div className="flex space-x-3">
+                                <button
+                                    onClick={() => setIsAddAttendanceScheduleModalOpen(false)}
+                                    className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-2xl font-medium hover:bg-gray-300 transition-all duration-200"
+                                >
+                                    キャンセル
+                                </button>
+                                <button
+                                    onClick={handleAddAttendanceSchedule}
+                                    disabled={loading || selectedChildren.length === 0}
+                                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-3 rounded-2xl font-medium hover:from-blue-600 hover:to-indigo-600 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200"
+                                >
+                                    {loading ? '登録中...' : `${selectedChildren.length}人の予定を登録`}
                                 </button>
                             </div>
                         </div>
