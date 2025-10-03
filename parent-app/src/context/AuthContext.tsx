@@ -7,6 +7,7 @@ interface User {
     display_name?: string;
     email?: string;
     user_type: string;
+    avatar_image?: string;
 }
 
 interface AuthContextType {
@@ -14,6 +15,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
+    updateUser: (displayName?: string, avatarImage?: string) => Promise<void>;
     isLoading: boolean;
 }
 
@@ -76,7 +78,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // ユーザー認証
             const { data: userData, error } = await supabase
                 .from('users')
-                .select('id, username, display_name, email, user_type')
+                .select('id, username, display_name, email, user_type, avatar_image')
                 .eq('username', username)
                 .eq('password', hashedPassword)
                 .single();
@@ -115,6 +117,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
+    const updateUser = async (displayName?: string, avatarImage?: string): Promise<void> => {
+        if (!user) return;
+
+        try {
+            const updateData: any = {};
+            if (displayName !== undefined) {
+                updateData.display_name = displayName;
+            }
+            if (avatarImage !== undefined) {
+                updateData.avatar_image = avatarImage;
+            }
+
+            const { error } = await supabase
+                .from('users')
+                .update(updateData)
+                .eq('id', user.id);
+
+            if (error) {
+                console.error('ユーザー情報更新エラー:', error);
+                throw error;
+            }
+
+            // ローカル状態を更新
+            const updatedUser = {
+                ...user,
+                ...updateData
+            };
+            setUser(updatedUser);
+            localStorage.setItem('kyou-no-dekita-user', JSON.stringify(updatedUser));
+        } catch (error) {
+            console.error('ユーザー情報更新エラー:', error);
+            throw error;
+        }
+    };
+
     const isAuthenticated = !!user;
 
     return (
@@ -123,6 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             isAuthenticated,
             login,
             logout,
+            updateUser,
             isLoading
         }}>
             {children}

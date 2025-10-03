@@ -313,6 +313,18 @@ export const directChatApi = {
             .order('last_message_at', { ascending: false });
 
         return { data, error };
+    },
+
+    // メッセージを削除
+    async deleteMessage(messageId: string, userId: string) {
+        // 自分が送信したメッセージのみ削除可能
+        const { data, error } = await supabase
+            .from('direct_chat_messages')
+            .delete()
+            .eq('id', messageId)
+            .eq('sender_user_id', userId);
+
+        return { data, error };
     }
 };
 

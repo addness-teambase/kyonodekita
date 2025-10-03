@@ -31,7 +31,7 @@ import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import CalendarView from './components/CalendarView';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
-import { supabase } from './lib/supabase';
+import { supabase, directChatApi } from './lib/supabase';
 
 // 初回設定モーダルコンポーネント
 interface FirstTimeSetupModalProps {
@@ -3692,6 +3692,34 @@ const App: React.FC = () => {
                               }
                             </div>
                           </div>
+                          <button
+                            onClick={async () => {
+                              if (window.confirm('このお知らせを削除しますか？\n保護者側でも表示されなくなります。')) {
+                                try {
+                                  const { error } = await supabase
+                                    .from('announcement_messages')
+                                    .delete()
+                                    .eq('id', announcement.id);
+
+                                  if (error) {
+                                    console.error('お知らせ削除エラー:', error);
+                                    alert('お知らせの削除に失敗しました');
+                                    return;
+                                  }
+
+                                  alert('お知らせを削除しました');
+                                  await loadAnnouncements();
+                                } catch (error) {
+                                  console.error('お知らせ削除エラー:', error);
+                                  alert('お知らせの削除に失敗しました');
+                                }
+                              }
+                            }}
+                            className="ml-3 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="お知らせを削除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -4283,7 +4311,7 @@ const App: React.FC = () => {
                     key={message.id}
                     className={`flex ${message.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-end space-x-2 max-w-[75%] ${message.sender === 'admin' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                    <div className={`group relative flex items-end space-x-2 max-w-[75%] ${message.sender === 'admin' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                       {/* アイコンは相手側のみ表示 (LINE風) */}
                       {message.sender !== 'admin' && (
                         <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-md mb-1">
@@ -4296,9 +4324,36 @@ const App: React.FC = () => {
                           className={`${message.sender === 'admin'
                             ? 'bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-2xl rounded-br-sm shadow-md'
                             : 'bg-white border border-gray-200 text-gray-900 rounded-2xl rounded-bl-sm shadow-sm'
-                            } px-4 py-2.5`}
+                            } px-4 py-2.5 relative`}
                         >
                           <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.message}</p>
+                          {/* 自分のメッセージのみ削除ボタンを表示 */}
+                          {message.sender === 'admin' && (
+                            <button
+                              onClick={async () => {
+                                if (window.confirm('このメッセージを削除しますか？')) {
+                                  try {
+                                    const { error } = await directChatApi.deleteMessage(message.id, user?.id || '');
+                                    if (error) {
+                                      console.error('メッセージ削除エラー:', error);
+                                      alert('メッセージの削除に失敗しました');
+                                      return;
+                                    }
+
+                                    // ローカル状態を更新
+                                    setChatMessages(prev => prev.filter(m => m.id !== message.id));
+                                  } catch (error) {
+                                    console.error('メッセージ削除エラー:', error);
+                                    alert('メッセージの削除に失敗しました');
+                                  }
+                                }
+                              }}
+                              className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded-full text-red-500 hover:text-red-700"
+                              title="メッセージを削除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                         <p className={`text-xs text-gray-400 mt-1 ${message.sender === 'admin' ? 'text-right' : 'text-left'} px-1`}>
                           {formatTime(message.timestamp)}

@@ -2200,9 +2200,9 @@ ${userMessage}
                         </div>
                         <div className="flex items-center space-x-2">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${record.attendance_status === 'present' ? 'bg-green-100 text-green-700' :
-                              record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
-                                record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-gray-100 text-gray-700'
+                            record.attendance_status === 'absent' ? 'bg-red-100 text-red-700' :
+                              record.attendance_status === 'late' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-700'
                             }`}>
                             {record.attendance_status === 'present' ? '出席' :
                               record.attendance_status === 'absent' ? '欠席' :
