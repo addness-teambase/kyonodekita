@@ -1986,10 +1986,10 @@ const App: React.FC = () => {
       if (existingRecord) {
         console.log('✅ 既存レコードを取得しました:', existingRecord);
 
-        // notesから本人の様子と活動内容を抽出
+        // notesから活動内容と本人の様子を抽出
         const notes = existingRecord.notes || '';
-        const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*?)\n\n【活動内容】/);
-        const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*)/);
+        const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*?)\n\n【本人の様子】/);
+        const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*)/);
 
         setEditingAttendanceRecordId(existingRecord.id);
         setNewAttendanceRecord({
@@ -2051,7 +2051,7 @@ const App: React.FC = () => {
 
     try {
       // 詳細記録を notes フィールドに結合して保存
-      const notes = `【本人の様子】\n${newAttendanceRecord.childCondition}\n\n【活動内容】\n${newAttendanceRecord.activities}`;
+      const notes = `【活動内容】\n${newAttendanceRecord.activities}\n\n【本人の様子】\n${newAttendanceRecord.childCondition}`;
 
       // facility_idを取得
       const facilityId = await getOrCreateAdminFacilityId();
@@ -2386,7 +2386,7 @@ const App: React.FC = () => {
                           </li>
                           <li className="flex items-start">
                             <span className="font-bold mr-2">③</span>
-                            <span>本人の様子と活動内容を記録</span>
+                            <span>活動内容と本人の様子を記録</span>
                           </li>
                           <li className="flex items-start">
                             <span className="font-bold mr-2">④</span>
@@ -4488,22 +4488,22 @@ const App: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
-                  <textarea
-                    value={newAttendanceRecord.childCondition}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
-                    placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">活動内容</label>
                   <textarea
                     value={newAttendanceRecord.activities}
                     onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, activities: e.target.value })}
                     className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
                     placeholder="今日行った活動や遊び、学習内容などを記録してください..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
+                  <textarea
+                    value={newAttendanceRecord.childCondition}
+                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
+                    placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
                   />
                 </div>
               </div>
