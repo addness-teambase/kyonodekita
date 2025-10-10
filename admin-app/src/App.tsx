@@ -23,7 +23,9 @@ import {
   Heart,
   Trash2,
   Megaphone,
-  ChevronLeft
+  ChevronLeft,
+  FileText,
+  Printer
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -262,6 +264,11 @@ const App: React.FC = () => {
   const [announcementCategory, setAnnouncementCategory] = useState<'general' | 'event' | 'emergency' | 'notice' | 'schedule'>('general');
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+
+  // 個人記録関連
+  const [selectedChildForIndividualRecords, setSelectedChildForIndividualRecords] = useState<string | null>(null);
+  const [individualRecordsMonth, setIndividualRecordsMonth] = useState<Date>(new Date());
+  const [individualRecordsData, setIndividualRecordsData] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [showAddChildModal, setShowAddChildModal] = useState(false);
@@ -2289,12 +2296,49 @@ const App: React.FC = () => {
     }
   };
 
+  // 個人記録データ取得
+  const loadIndividualRecords = async (childId: string, month: Date) => {
+    try {
+      console.log('🔍 個人記録を取得中...', { childId, month });
+
+      const monthStart = startOfMonth(month);
+      const monthEnd = endOfMonth(month);
+
+      // attendance_recordsから該当月のデータを取得
+      const { data: records, error } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('child_id', childId)
+        .gte('date', format(monthStart, 'yyyy-MM-dd'))
+        .lte('date', format(monthEnd, 'yyyy-MM-dd'))
+        .order('date', { ascending: true });
+
+      if (error) {
+        console.error('個人記録取得エラー:', error);
+        return;
+      }
+
+      console.log('✅ 個人記録を取得しました:', records?.length || 0, '件');
+      setIndividualRecordsData(records || []);
+    } catch (error) {
+      console.error('個人記録取得エラー:', error);
+    }
+  };
+
+  // 個人記録ページで園児または月が変更されたら再取得
+  useEffect(() => {
+    if (currentView === 'individual-records' && selectedChildForIndividualRecords) {
+      loadIndividualRecords(selectedChildForIndividualRecords, individualRecordsMonth);
+    }
+  }, [currentView, selectedChildForIndividualRecords, individualRecordsMonth]);
+
 
   // サイドバーメニュー
   const sidebarItems = [
     { id: 'management', label: '園児管理', icon: Users },
     { id: 'attendance', label: '出席記録', icon: BookOpen },
     { id: 'records', label: '成長記録', icon: Heart },
+    { id: 'individual-records', label: '個人記録', icon: FileText },
     { id: 'messages', label: 'メッセージ', icon: MessageSquare, badge: stats.unreadMessages },
     { id: 'announcements', label: '一斉お知らせ', icon: Megaphone },
     { id: 'calendar', label: 'カレンダー', icon: Calendar },
@@ -2310,6 +2354,208 @@ const App: React.FC = () => {
   const renderMainContent = () => {
     switch (currentView) {
 
+      case 'individual-records':
+        const selectedChild = selectedChildForIndividualRecords 
+          ? children.find(c => c.id === selectedChildForIndividualRecords)
+          : null;
+
+        return (
+          <div className="space-y-6">
+            {/* ヘッダーセクション */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">個人記録管理</h2>
+                  <p className="text-sm text-gray-600">園児ごとの月次記録を確認・印刷できます</p>
+                </div>
+                {selectedChild && (
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200"
+                  >
+                    <Printer size={18} />
+                    印刷
+                  </button>
+                )}
+              </div>
+
+              {/* 園児選択 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">園児を選択</label>
+                  <select
+                    value={selectedChildForIndividualRecords || ''}
+                    onChange={(e) => setSelectedChildForIndividualRecords(e.target.value || null)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">園児を選択してください</option>
+                    {children.map(child => (
+                      <option key={child.id} value={child.id}>{child.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">対象月</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIndividualRecordsMonth(subMonths(individualRecordsMonth, 1))}
+                      className="px-3 py-3 border border-gray-300 rounded-xl hover:bg-gray-50"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <input
+                      type="month"
+                      value={format(individualRecordsMonth, 'yyyy-MM')}
+                      onChange={(e) => setIndividualRecordsMonth(new Date(e.target.value))}
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <button
+                      onClick={() => setIndividualRecordsMonth(addMonths(individualRecordsMonth, 1))}
+                      className="px-3 py-3 border border-gray-300 rounded-xl hover:bg-gray-50"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 記録一覧 */}
+            {!selectedChild ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">園児を選択してください</h3>
+                <p className="text-gray-600">上の選択ボックスから園児を選んで記録を表示します</p>
+              </div>
+            ) : individualRecordsData.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">記録がありません</h3>
+                <p className="text-gray-600">
+                  {format(individualRecordsMonth, 'yyyy年M月', { locale: ja })}の記録はまだありません
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 print:shadow-none print:border-0">
+                {/* 印刷用ヘッダー（画面では非表示） */}
+                <div className="hidden print:block p-6 border-b border-gray-200">
+                  <h1 className="text-2xl font-bold text-center mb-4">個人記録</h1>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-semibold">園児名：</span>{selectedChild.name}
+                    </div>
+                    <div>
+                      <span className="font-semibold">対象月：</span>
+                      {format(individualRecordsMonth, 'yyyy年M月', { locale: ja })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <div className="mb-6 print:mb-4">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
+                      {selectedChild.name}さんの記録
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {format(individualRecordsMonth, 'yyyy年M月', { locale: ja })} ({individualRecordsData.length}日分)
+                    </p>
+                  </div>
+
+                  {/* 記録リスト */}
+                  <div className="space-y-4 print:space-y-2">
+                    {individualRecordsData.map((record) => {
+                      // notesから活動内容と本人の様子を抽出
+                      const notes = record.notes || '';
+                      const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*?)\n\n【本人の様子】/);
+                      const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*)/);
+                      const activities = activitiesMatch ? activitiesMatch[1].trim() : '';
+                      const childCondition = childConditionMatch ? childConditionMatch[1].trim() : '';
+
+                      return (
+                        <div 
+                          key={record.id} 
+                          className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors print:hover:bg-white print:break-inside-avoid"
+                        >
+                          <div className="flex items-center justify-between mb-3 print:mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-semibold">
+                                {format(new Date(record.date), 'M月d日(E)', { locale: ja })}
+                              </div>
+                              {record.actual_arrival_time && (
+                                <div className="text-sm text-gray-600">
+                                  <Clock size={14} className="inline mr-1" />
+                                  {record.actual_arrival_time?.slice(0, 5)} 〜 {record.actual_departure_time?.slice(0, 5)}
+                                </div>
+                              )}
+                            </div>
+                            <div className={`px-3 py-1 rounded-lg text-sm font-medium ${
+                              record.attendance_status === 'present' 
+                                ? 'bg-green-100 text-green-700'
+                                : record.attendance_status === 'absent'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {record.attendance_status === 'present' ? '出席' : 
+                               record.attendance_status === 'absent' ? '欠席' : '未記録'}
+                            </div>
+                          </div>
+
+                          {activities && (
+                            <div className="mb-3 print:mb-2">
+                              <div className="text-sm font-semibold text-gray-700 mb-1">活動内容</div>
+                              <div className="text-sm text-gray-600 whitespace-pre-wrap bg-blue-50 p-3 rounded-lg print:bg-transparent print:border print:border-gray-300">
+                                {activities}
+                              </div>
+                            </div>
+                          )}
+
+                          {childCondition && (
+                            <div>
+                              <div className="text-sm font-semibold text-gray-700 mb-1">本人の様子</div>
+                              <div className="text-sm text-gray-600 whitespace-pre-wrap bg-green-50 p-3 rounded-lg print:bg-transparent print:border print:border-gray-300">
+                                {childCondition}
+                              </div>
+                            </div>
+                          )}
+
+                          {!activities && !childCondition && (
+                            <p className="text-sm text-gray-400 italic">記録なし</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 統計情報 */}
+                  <div className="mt-6 pt-6 border-t border-gray-200 print:mt-4 print:pt-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">月次統計</h4>
+                    <div className="grid grid-cols-3 gap-4 print:gap-2">
+                      <div className="bg-blue-50 p-4 rounded-lg print:border print:border-blue-200">
+                        <div className="text-sm text-gray-600 mb-1">出席日数</div>
+                        <div className="text-2xl font-bold text-blue-600">
+                          {individualRecordsData.filter(r => r.attendance_status === 'present').length}日
+                        </div>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-lg print:border print:border-red-200">
+                        <div className="text-sm text-gray-600 mb-1">欠席日数</div>
+                        <div className="text-2xl font-bold text-red-600">
+                          {individualRecordsData.filter(r => r.attendance_status === 'absent').length}日
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-lg print:border print:border-gray-200">
+                        <div className="text-sm text-gray-600 mb-1">記録数</div>
+                        <div className="text-2xl font-bold text-gray-700">
+                          {individualRecordsData.length}件
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
 
       case 'attendance':
         // 今日の予定者のみを表示
