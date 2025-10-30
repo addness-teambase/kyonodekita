@@ -7,7 +7,8 @@ interface User {
     display_name?: string;
     email?: string;
     user_type: string;
-    avatar_image?: string;
+    full_name?: string;
+    phone?: string;
 }
 
 interface AuthContextType {
@@ -15,7 +16,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
-    updateUser: (displayName?: string, avatarImage?: string) => Promise<void>;
+    updateUser: (displayName?: string, fullName?: string) => Promise<void>;
     isLoading: boolean;
 }
 
@@ -72,29 +73,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
         setIsLoading(true);
         try {
+            console.log('🔐 ログイン試行:', { username });
+
             // パスワードをハッシュ化
             const hashedPassword = hashPassword(password);
+            console.log('🔑 パスワードハッシュ化完了');
 
             // ユーザー認証
             const { data: userData, error } = await supabase
                 .from('users')
-                .select('id, username, display_name, email, user_type, avatar_image')
+                .select('id, username, display_name, email, user_type, full_name, phone')
                 .eq('username', username)
                 .eq('password', hashedPassword)
                 .single();
 
-            if (error || !userData) {
+            // 詳細なエラーログ
+            if (error) {
+                console.error('❌ Supabaseエラー詳細:', {
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint,
+                    code: error.code
+                });
+                return {
+                    success: false,
+                    error: `認証エラー: ${error.message}`
+                };
+            }
+
+            if (!userData) {
+                console.warn('⚠️ ユーザーデータが見つかりません');
                 return {
                     success: false,
                     error: 'ユーザー名またはパスワードが間違っています'
                 };
             }
 
+            console.log('✅ ログイン成功:', { userId: userData.id, userType: userData.user_type });
             setUser(userData);
             localStorage.setItem('kyou-no-dekita-user', JSON.stringify(userData));
             return { success: true };
         } catch (error) {
-            console.error('ログインエラー:', error);
+            console.error('💥 予期しないログインエラー:', error);
             return {
                 success: false,
                 error: 'ログインに失敗しました'
@@ -117,7 +137,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
-    const updateUser = async (displayName?: string, avatarImage?: string): Promise<void> => {
+    const updateUser = async (displayName?: string, fullName?: string): Promise<void> => {
         if (!user) return;
 
         try {
@@ -125,8 +145,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (displayName !== undefined) {
                 updateData.display_name = displayName;
             }
-            if (avatarImage !== undefined) {
-                updateData.avatar_image = avatarImage;
+            if (fullName !== undefined) {
+                updateData.full_name = fullName;
             }
 
             const { error } = await supabase
