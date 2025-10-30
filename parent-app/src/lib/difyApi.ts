@@ -95,3 +95,4 @@ export function resetConversation(): void {
     // 特別な処理は不要
 }
 
+
