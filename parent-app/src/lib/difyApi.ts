@@ -42,6 +42,10 @@ export async function sendMessageToDify(
     additionalInputs: Record<string, any> = {}
 ): Promise<{ answer: string; conversationId: string }> {
     try {
+        console.log('🚀 Dify API呼び出し開始');
+        console.log('📡 API URL:', `${DIFY_API_URL}/chat-messages`);
+        console.log('🔑 API Key:', DIFY_API_KEY ? `${DIFY_API_KEY.substring(0, 10)}...` : 'なし');
+        
         const requestBody: DifyChatRequest = {
             inputs: additionalInputs,
             query: query,
@@ -54,6 +58,8 @@ export async function sendMessageToDify(
             requestBody.conversation_id = conversationId;
         }
 
+        console.log('📤 リクエストボディ:', JSON.stringify(requestBody, null, 2));
+
         const response = await fetch(`${DIFY_API_URL}/chat-messages`, {
             method: 'POST',
             headers: {
@@ -63,9 +69,11 @@ export async function sendMessageToDify(
             body: JSON.stringify(requestBody),
         });
 
+        console.log('📥 レスポンスステータス:', response.status);
+
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Dify APIエラー:', response.status, errorText);
+            console.error('❌ Dify APIエラー:', response.status, errorText);
 
             // レート制限エラー
             if (response.status === 429) {
@@ -76,13 +84,14 @@ export async function sendMessageToDify(
         }
 
         const data: DifyChatResponse = await response.json();
+        console.log('✅ Dify API成功:', data);
 
         return {
             answer: data.answer || 'お話を聞かせていただき、ありがとうございます。もう少し詳しく教えていただけますか？',
             conversationId: data.conversation_id,
         };
     } catch (error) {
-        console.error('Dify API通信エラー:', error);
+        console.error('❌ Dify API通信エラー:', error);
         throw error;
     }
 }

@@ -7,6 +7,7 @@ import RecordButton from './components/RecordButton';
 import GrowthRecords from './components/GrowthRecords';
 import { compressImage } from './utils/imageUtils';
 import { supabase, directChatApi, announcementApi } from './lib/supabase';
+import { sendMessageToDify } from './lib/difyApi';
 
 import LoginPage from './components/LoginPage';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
@@ -408,59 +409,97 @@ function AppContent() {
     setCurrentSessionId(null);
   };
 
-  // テーマ別チャットセッションを作成
-  const createThematicChatSession = (theme: 'development' | 'behavior' | 'health' | 'concerns') => {
+  // シンプルなチャットセッションを作成
+  const createSimpleChatSession = async () => {
     if (!user || !activeChildId) return;
 
-    const childName = childInfo?.name || 'お子さま';
-    const suffix = getChildSuffix(childInfo?.gender);
-    const age = childInfo?.age || '';
-
-    const themeMessages = {
-      general: {
-        title: 'AI先生に相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${age}歳の${childName}${suffix}について、どんなことでもお気軽にご相談ください。\n\n発達のこと、行動のこと、日々の子育ての悩みなど、何でも構いません。お話をお聞かせください。`
-      },
-      development: {
-        title: '成長・発達相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${age}歳の${childName}${suffix}の成長や発達について、最近気になることはありますか？\n\n言葉の発達、運動能力、コミュニケーション、認知発達など、どんなことでも構いません。具体的な様子を教えてください。`
-      },
-      behavior: {
-        title: 'しつけ・行動相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${childName}${suffix}のしつけや行動について、最近悩んでいることはありますか？\n\n日常の行動、お友達との関わり、ルールを守ること、感情のコントロールなど、どんなことでも構いません。詳しく教えてください。`
-      },
-      health: {
-        title: '健康・生活相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${childName}${suffix}の健康や生活習慣について、心配なことはありますか？\n\n食事、睡眠、体調管理、生活リズムなど、どんなことでも構いません。気になることを教えてください。`
-      },
-      concerns: {
-        title: '育児の悩み相談',
-        content: `こんにちは！私は子育て支援の専門家です。\n\n${childName}${suffix}との日々の生活で困っていることや、不安に思うことがあれば、遠慮なくお聞かせください。\n\n一緒に解決策を考えましょう。`
-      }
-    };
-
-    const selectedTheme = themeMessages[theme];
-    const welcomeMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content: selectedTheme.content,
-      sender: 'ai',
-      timestamp: new Date().toISOString(),
-      childId: activeChildId
-    };
+    // Dify会話IDをリセットして新しい会話を開始
+    setDifyConversationId(null);
 
     const newSession: ChatSession = {
       id: Date.now().toString(),
-      title: selectedTheme.title,
-      messages: [welcomeMessage],
+      title: 'AI先生に相談',
+      messages: [],
       childId: activeChildId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    const updatedSessions = [newSession, ...chatSessions];
+    // 「相談を始める」というユーザーメッセージを作成
+    const initialUserMessage: ChatMessage = {
+      id: Date.now().toString(),
+      content: '相談を始める',
+      sender: 'user',
+      timestamp: new Date().toISOString(),
+      childId: activeChildId
+    };
+
+    // メッセージを追加してセッションを更新
+    const sessionWithUserMessage: ChatSession = {
+      ...newSession,
+      messages: [initialUserMessage],
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedSessions = [sessionWithUserMessage, ...chatSessions];
     setChatSessions(updatedSessions);
     setCurrentSessionId(newSession.id);
     saveChatSessions(updatedSessions);
+    setIsAiThinking(true);
+
+    // Dify APIを呼び出してAI応答を取得
+    try {
+      const aiResponseText = await generateAiResponse('相談を始める', sessionWithUserMessage.messages);
+
+      const aiResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: aiResponseText,
+        sender: 'ai',
+        timestamp: new Date().toISOString(),
+        childId: activeChildId
+      };
+
+      const finalMessages = [...sessionWithUserMessage.messages, aiResponse];
+      const finalSession: ChatSession = {
+        ...sessionWithUserMessage,
+        messages: finalMessages,
+        updatedAt: new Date().toISOString()
+      };
+
+      const finalSessions = chatSessions.map(session =>
+        session.id === newSession.id ? finalSession : session
+      );
+
+      // 新しいセッションなので、配列の先頭に追加
+      const finalSessionsList = [finalSession, ...chatSessions.filter(s => s.id !== newSession.id)];
+
+      setChatSessions(finalSessionsList);
+      saveChatSessions(finalSessionsList);
+    } catch (error) {
+      console.error('AI応答エラー:', error);
+      // エラー時はフォールバック応答
+      const aiResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: 'すみません、少し調子が悪いようです。もう一度お話を聞かせていただけますか？',
+        sender: 'ai',
+        timestamp: new Date().toISOString(),
+        childId: activeChildId
+      };
+
+      const finalMessages = [...sessionWithUserMessage.messages, aiResponse];
+      const finalSession: ChatSession = {
+        ...sessionWithUserMessage,
+        messages: finalMessages,
+        updatedAt: new Date().toISOString()
+      };
+
+      const finalSessionsList = [finalSession, ...chatSessions.filter(s => s.id !== newSession.id)];
+
+      setChatSessions(finalSessionsList);
+      saveChatSessions(finalSessionsList);
+    } finally {
+      setIsAiThinking(false);
+    }
   };
 
   // 現在のセッションを取得
@@ -547,6 +586,7 @@ function AppContent() {
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [showDeleteSessionConfirm, setShowDeleteSessionConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [difyConversationId, setDifyConversationId] = useState<string | null>(null);
 
 
 
@@ -841,7 +881,7 @@ function AppContent() {
     setCurrentMessage('');
     setIsAiThinking(true);
 
-    // AI応答を生成（実際のGemini API使用）
+    // AI応答を生成（Dify API使用）
     (async () => {
       try {
         const aiResponseText = await generateAiResponse(userMessage.content, updatedSession.messages);
@@ -930,88 +970,47 @@ function AppContent() {
     apiKey: import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyBW0cLo-OZbPYqNVBFXMbB41-0qC5Q2nuk'
   });
 
-  // AI応答を生成（実際のGemini API使用）
+  // AI応答を生成（Dify API使用）
   const generateAiResponse = async (userMessage: string, conversationHistory: ChatMessage[]): Promise<string> => {
     try {
-      // 子供の情報と会話の文脈を作成
+      console.log('🔌 Dify API接続開始...');
+      console.log('📝 ユーザーメッセージ:', userMessage);
+      console.log('🆔 会話ID:', difyConversationId);
+      
+      // 子供の情報を準備
       const childName = childInfo?.name || 'お子さま';
       const childAge = childInfo?.age || '';
-      const childGender = childInfo?.gender;
-      const suffix = getChildSuffix(childGender);
+      const childGender = childInfo?.gender || '';
+      const childBirthdate = childInfo?.birthdate || '';
 
-      // 現在のセッションのタイトルから相談テーマを判定
-      const currentSession = getCurrentSession();
-      const sessionTitle = currentSession?.title || '';
+      // Dify APIに送信する追加の入力情報
+      const additionalInputs = {
+        child_name: childName,
+        child_age: childAge.toString(),
+        child_gender: childGender,
+        child_birthdate: childBirthdate
+      };
 
-      let themeSpecificInstruction = '';
-      if (sessionTitle.includes('発達について')) {
-        themeSpecificInstruction = `
-**発達相談の専門性:**
-- 言葉の発達、運動発達、社会性の発達に詳しい
-- 年齢に応じた発達の目安を知っている
-- 発達の個人差について理解している
-- 具体的な発達促進のアドバイスを提供する`;
-      } else if (sessionTitle.includes('行動について')) {
-        themeSpecificInstruction = `
-**行動相談の専門性:**
-- 食事、睡眠、遊びの習慣に詳しい
-- 年齢に応じた行動パターンを理解している
-- 行動改善の具体的な方法を提案する
-- 友達関係や社会性について専門的な知識を持つ`;
-      } else if (sessionTitle.includes('育児の悩み')) {
-        themeSpecificInstruction = `
-**育児相談の専門性:**
-- 保護者の心理的サポートに長けている
-- 具体的な育児の困りごとの解決策を提案する
-- 家族全体の生活バランスについて考慮する
-- 保護者の負担軽減を重視する`;
-      }
+      console.log('👶 子供情報:', additionalInputs);
 
-      // 会話履歴を文字列に変換
-      const historyContext = conversationHistory
-        .slice(-6) // 最新の6つのメッセージのみ使用
-        .map(msg => `${msg.sender === 'user' ? '保護者' : 'AI先生'}: ${msg.content}`)
-        .join('\n');
+      // Dify APIを呼び出し
+      const { answer, conversationId } = await sendMessageToDify(
+        userMessage,
+        difyConversationId,
+        user?.id || 'anonymous',
+        additionalInputs
+      );
 
-      const prompt = `あなたは子育て支援の専門家です。保護者と${childName}${suffix}（${childAge}歳）について相談を受けています。
+      console.log('✅ Dify APIから応答受信:', answer);
+      console.log('🆔 新しい会話ID:', conversationId);
 
-**あなたの役割:**
-- 温かく親身になって話を聞く子育て相談の専門家
-- 積極的にヒアリングして詳細を聞き出す
-- 具体的で実践的なアドバイスを提供
-- 保護者の気持ちに共感し、励ます
+      // 会話IDを保存（次回の会話で使用）
+      setDifyConversationId(conversationId);
 
-${themeSpecificInstruction}
-
-**会話の方針:**
-- 必ず質問を含める（2-3個の具体的な質問）
-- 150文字以内で簡潔に
-- 子供の名前を使って親しみやすく
-- 保護者の観察力を褒める
-- 成長の兆候を一緒に見つける
-
-**これまでの会話:**
-${historyContext}
-
-**保護者の最新メッセージ:**
-${userMessage}
-
-上記を踏まえて、温かく共感的で、具体的な質問を含む返答をしてください。`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          thinkingConfig: {
-            thinkingBudget: 0, // Disables thinking
-          },
-        }
-      });
-
-      return response.text || 'お話を聞かせていただき、ありがとうございます。もう少し詳しく教えていただけますか？';
+      return answer;
 
     } catch (error) {
-      console.error('AI応答生成エラー:', error);
+      console.error('❌ AI応答生成エラー:', error);
 
       // レート制限エラーの特別対応
       if (error && (error.toString().includes('Quota exceeded') || error.toString().includes('RATE_LIMIT_EXCEEDED') || error.toString().includes('429'))) {
@@ -1023,12 +1022,7 @@ ${userMessage}
       }
 
       // 通常のエラー時フォールバック応答
-      const fallbackResponses = [
-        `なるほど、詳しく教えていただいてありがとうございます。その時の${childInfo?.name}${getChildSuffix(childInfo?.gender)}の表情や反応はどうでしたか？`,
-        `そうですね、よく観察されていますね。その場面で、${childInfo?.name}${getChildSuffix(childInfo?.gender)}は何か特別な様子を見せていましたか？`,
-        `興味深いお話ですね。その出来事の前後で、何か変化はありましたか？例えば、食事や睡眠、遊び方などで気づいたことがあれば聞かせてください。`
-      ];
-      return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+      return 'お話を聞かせていただき、ありがとうございます。もう少し詳しく教えていただけますか？';
     }
   };
 
@@ -1651,65 +1645,20 @@ ${userMessage}
                       {/* 初回案内とカテゴリーボタン */}
                       {!getCurrentSession() && (
                         <div className="w-full space-y-6">
-                          {/* AI案内メッセージ */}
-                          <div className="max-w-3xl w-full pr-8">
-                            <div className="group relative">
-                              <div className="flex items-start space-x-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                  <MessageSquare className="w-4 h-4 text-white" />
-                                </div>
-                                <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm px-4 py-3">
-                                  <div className="text-sm leading-relaxed text-gray-800">
-                                    こんにちは！AI先生です。<br />
-                                    どのようなことについてご相談されますか？下のボタンからお選びください。
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 相談カテゴリーボタン */}
+                          {/* 相談開始ボタン */}
                           <div className="w-full px-4">
-                            <div className="grid grid-cols-1 gap-3 max-w-2xl">
+                            <div className="flex justify-center max-w-2xl mx-auto">
                               <button
-                                onClick={() => createThematicChatSession('development')}
-                                className="flex items-center justify-start p-4 bg-white border-2 border-purple-200 hover:border-purple-300 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md"
+                                onClick={() => createSimpleChatSession()}
+                                className="w-full max-w-md flex items-center justify-center p-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl"
                                 style={{ WebkitTapHighlightColor: 'transparent' }}
                               >
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mr-4 flex-shrink-0">
-                                  <span className="text-2xl">🌱</span>
+                                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mr-4 flex-shrink-0">
+                                  <span className="text-3xl">💬</span>
                                 </div>
                                 <div className="text-left">
-                                  <div className="font-bold text-gray-800 text-sm">成長・発達について</div>
-                                  <div className="text-xs text-gray-500 mt-1">お子さまの成長や発達の気になることなど</div>
-                                </div>
-                              </button>
-
-                              <button
-                                onClick={() => createThematicChatSession('behavior')}
-                                className="flex items-center justify-start p-4 bg-white border-2 border-blue-200 hover:border-blue-300 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md"
-                                style={{ WebkitTapHighlightColor: 'transparent' }}
-                              >
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mr-4 flex-shrink-0">
-                                  <span className="text-2xl">👶</span>
-                                </div>
-                                <div className="text-left">
-                                  <div className="font-bold text-gray-800 text-sm">しつけ・行動について</div>
-                                  <div className="text-xs text-gray-500 mt-1">日常の行動やしつけの悩みなど</div>
-                                </div>
-                              </button>
-
-                              <button
-                                onClick={() => createThematicChatSession('health')}
-                                className="flex items-center justify-start p-4 bg-white border-2 border-green-200 hover:border-green-300 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md"
-                                style={{ WebkitTapHighlightColor: 'transparent' }}
-                              >
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center mr-4 flex-shrink-0">
-                                  <span className="text-2xl">💪</span>
-                                </div>
-                                <div className="text-left">
-                                  <div className="font-bold text-gray-800 text-sm">健康・生活について</div>
-                                  <div className="text-xs text-gray-500 mt-1">食事、睡眠、健康面での心配事など</div>
+                                  <div className="font-bold text-white text-lg">相談を始める</div>
+                                  <div className="text-sm text-white/90 mt-1">AI先生に何でもお気軽にご相談ください</div>
                                 </div>
                               </button>
                             </div>
@@ -1880,7 +1829,7 @@ ${userMessage}
                     <textarea
                       value={directMessage}
                       onChange={(e) => setDirectMessage(e.target.value)}
-                      placeholder="園の先生にメッセージを送信...&#10;&#10;Shift + Enter: 改行&#10;Enter: 送信"
+                      placeholder="園の先生にメッセージを送信..."
                       className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-300 text-sm resize-none transition-all duration-200 min-h-[60px] max-h-[200px]"
                       rows={2}
                       onKeyDown={(e) => {

@@ -1993,8 +1993,8 @@ const App: React.FC = () => {
 
         // notesから本人の様子と活動内容を抽出
         const notes = existingRecord.notes || '';
-        const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*?)\n\n【活動内容】/);
-        const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*)/);
+        const activitiesMatch = notes.match(/【活動内容】\n([\s\S]*?)\n\n【本人の様子】/);
+        const childConditionMatch = notes.match(/【本人の様子】\n([\s\S]*)/);
 
         setEditingAttendanceRecordId(existingRecord.id);
         setNewAttendanceRecord({
@@ -2056,7 +2056,7 @@ const App: React.FC = () => {
 
     try {
       // 詳細記録を notes フィールドに結合して保存
-      const notes = `【本人の様子】\n${newAttendanceRecord.childCondition}\n\n【活動内容】\n${newAttendanceRecord.activities}`;
+      const notes = `【活動内容】\n${newAttendanceRecord.activities}\n\n【本人の様子】\n${newAttendanceRecord.childCondition}`;
 
       // facility_idを取得
       const facilityId = await getOrCreateAdminFacilityId();
@@ -4407,7 +4407,7 @@ const App: React.FC = () => {
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={`${children.find(c => c.id === chatChild)?.parentName || 'ご家族'}にメッセージを送信...\n\nShift + Enter: 改行\nEnter: 送信`}
+                  placeholder={`${children.find(c => c.id === chatChild)?.parentName || 'ご家族'}にメッセージを送信...`}
                   className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-300 transition-all duration-200 resize-none min-h-[60px] max-h-[200px]"
                   rows={2}
                   onKeyDown={(e) => {
@@ -4525,22 +4525,22 @@ const App: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
-                  <textarea
-                    value={newAttendanceRecord.childCondition}
-                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
-                    placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">活動内容</label>
                   <textarea
                     value={newAttendanceRecord.activities}
                     onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, activities: e.target.value })}
                     className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
                     placeholder="今日行った活動や遊び、学習内容などを記録してください..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">本人の様子</label>
+                  <textarea
+                    value={newAttendanceRecord.childCondition}
+                    onChange={(e) => setNewAttendanceRecord({ ...newAttendanceRecord, childCondition: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 min-h-[120px] resize-none"
+                    placeholder="今日の○○ちゃんの様子や体調、気になったことなどを記録してください..."
                   />
                 </div>
               </div>
