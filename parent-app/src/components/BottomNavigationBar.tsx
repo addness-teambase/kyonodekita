@@ -1,9 +1,9 @@
 import React from 'react';
-import { Home, MessageSquare, Edit, Calendar, TrendingUp, ClipboardList, UserCircle } from 'lucide-react';
+import { Home, MessageSquare, Edit, Calendar, TrendingUp, ClipboardList } from 'lucide-react';
 
 interface BottomNavigationBarProps {
-    activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records' | 'expert_consultation';
-    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records' | 'expert_consultation') => void;
+    activeTab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records';
+    onTabChange: (tab: 'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records') => void;
     chatUnreadCount?: number;
 }
 
@@ -92,22 +92,6 @@ const BottomNavigationBar: React.FC<BottomNavigationBarProps> = ({
                     <TrendingUp size={20} />
                 </div>
                 <span className="text-xs mt-1 font-medium">成長</span>
-            </button>
-
-            <button
-                onClick={() => onTabChange('expert_consultation')}
-                className={`flex flex-col items-center justify-center w-full h-full transition-all duration-200 ${activeTab === 'expert_consultation'
-                    ? 'text-pink-500'
-                    : 'text-gray-400 hover:text-gray-600'
-                    }`}
-            >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${activeTab === 'expert_consultation'
-                    ? 'bg-pink-100'
-                    : 'hover:bg-gray-50'
-                    }`}>
-                    <UserCircle size={20} />
-                </div>
-                <span className="text-xs mt-1 font-medium">相談</span>
             </button>
 
             <button
