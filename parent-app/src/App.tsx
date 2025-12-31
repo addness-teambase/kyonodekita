@@ -16,8 +16,13 @@ import CalendarView from './components/CalendarView';
 import WeeklyView from './components/WeeklyView';
 import MonthlyView from './components/MonthlyView';
 import RecordSummary from './components/RecordSummary';
+import ExpertConsultation from './components/ExpertConsultation';
+import ExpertDetail from './components/ExpertDetail';
+import BookingSuccess from './components/BookingSuccess';
+import MyBookings from './components/MyBookings';
 import { Dialog } from '@headlessui/react';
 import { DirectChatMessage, DirectChatSession } from './types';
+import { createStripePaymentLink } from './lib/stripe';
 
 // 生年月日から年齢を計算する関数
 const calculateAge = (birthdate: string): number => {
@@ -128,7 +133,13 @@ function AppContent() {
   const { user, logout, updateUser } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'record' | 'calendar' | 'growth' | 'facility_records' | 'expert_consultation'>('home');
+
+  // 専門家相談関連
+  const [selectedExpert, setSelectedExpert] = useState<any>(null);
+  const [showBookingSuccess, setShowBookingSuccess] = useState(false);
+  const [bookingExpertId, setBookingExpertId] = useState<string | null>(null);
+  const [showMyBookings, setShowMyBookings] = useState(false);
 
   // 施設からの記録関連
   const [facilityRecords, setFacilityRecords] = useState<any[]>([]);
@@ -148,6 +159,7 @@ function AppContent() {
 
   // 一斉メッセージ関連
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [expertAnnouncements, setExpertAnnouncements] = useState<any[]>([]);
   const [unreadAnnouncementsCount, setUnreadAnnouncementsCount] = useState(0);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any>(null);
@@ -213,6 +225,26 @@ function AppContent() {
       setAnnouncements(data || []);
     } catch (error) {
       console.error('お知らせ取得エラー:', error);
+    }
+  };
+
+  // 専門家からのお知らせを取得
+  const loadExpertAnnouncements = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('expert_announcements')
+        .select('*')
+        .eq('is_published', true)
+        .order('published_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('専門家お知らせ取得エラー:', error);
+        return;
+      }
+      setExpertAnnouncements(data || []);
+    } catch (error) {
+      console.error('専門家お知らせ取得エラー:', error);
     }
   };
 
@@ -303,8 +335,23 @@ function AppContent() {
     if (user?.id) {
       loadAnnouncements();
       loadUnreadAnnouncementsCount();
+      loadExpertAnnouncements();
     }
   }, [user?.id]);
+
+  // URLパラメータをチェックして予約完了画面を表示
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const bookingSuccess = urlParams.get('booking_success');
+    const expertId = urlParams.get('expert_id');
+
+    if (bookingSuccess === 'true' && expertId) {
+      setBookingExpertId(expertId);
+      setShowBookingSuccess(true);
+      // URLパラメータをクリア
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // 施設からの記録を読み込む
   useEffect(() => {
@@ -818,7 +865,37 @@ function AppContent() {
     setRecordToDelete(null);
   };
 
+  // 専門家相談：決済画面へ遷移
+  const handleExpertConsult = async (expert: any) => {
+    if (!user?.id) {
+      alert('ログインが必要です');
+      return;
+    }
 
+    try {
+      // Stripe決済リンクを生成
+      const paymentLink = await createStripePaymentLink({
+        expertId: expert.id,
+        expertName: expert.name,
+        amount: expert.consultation_fee || 3000,
+        userId: user.id
+      });
+
+      // 決済成功後のリダイレクト先を設定
+      const successUrl = `${window.location.origin}/?booking_success=true&expert_id=${expert.id}`;
+
+      // TODO: 実際のStripe決済リンクに置き換える
+      // 現在はデモとして、直接予約完了画面へ遷移
+      setBookingExpertId(expert.id);
+      setShowBookingSuccess(true);
+
+      // 本番環境では以下のように決済画面へ遷移
+      // window.location.href = `${paymentLink}&success_url=${encodeURIComponent(successUrl)}`;
+    } catch (error) {
+      console.error('決済リンク生成エラー:', error);
+      alert('決済画面の表示に失敗しました');
+    }
+  };
 
   // メッセージ送信機能
   const handleSendMessage = async () => {
@@ -1175,6 +1252,40 @@ function AppContent() {
                   </div>
                   <ChevronRight className="w-5 h-5 text-orange-600" />
                 </div>
+              </div>
+            )}
+
+            {/* 専門家からのお知らせ */}
+            {expertAnnouncements.length > 0 && (
+              <div className="w-full space-y-3">
+                {expertAnnouncements.slice(0, 3).map((announcement) => (
+                  <div
+                    key={announcement.id}
+                    className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-2xl shadow-sm border border-pink-200 p-4"
+                  >
+                    <div className="flex items-start space-x-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-purple-400 flex items-center justify-center flex-shrink-0">
+                        <Megaphone className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-pink-800 mb-1">
+                          {announcement.title}
+                        </p>
+                        <p className="text-xs text-pink-700 line-clamp-2">
+                          {announcement.content}
+                        </p>
+                        <p className="text-2xs text-pink-600 mt-2">
+                          {new Date(announcement.published_at).toLocaleDateString('ja-JP', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -2247,6 +2358,32 @@ function AppContent() {
             </div>
           </div>
         );
+      case 'expert_consultation':
+        // 予約履歴表示
+        if (showMyBookings) {
+          return <MyBookings />;
+        }
+
+        // 専門家詳細表示
+        if (selectedExpert) {
+          return (
+            <ExpertDetail
+              expert={selectedExpert}
+              onBack={() => setSelectedExpert(null)}
+              onConsult={handleExpertConsult}
+            />
+          );
+        }
+
+        // 専門家一覧表示
+        return (
+          <ExpertConsultation
+            onExpertSelect={(expert) => {
+              setSelectedExpert(expert);
+            }}
+            selectedExpert={selectedExpert}
+          />
+        );
       default:
         return null;
     }
@@ -2342,7 +2479,7 @@ function AppContent() {
 
       {/* メインコンテンツ - スマホ対応 */}
       <div className="container mx-auto max-w-md mobile-safe-padding pt-6 pb-24 flex-1 scroll-container">
-        {activeTab === 'chat' ? (
+        {activeTab === 'chat' || activeTab === 'expert_consultation' ? (
           <div className="h-full">
             {renderContent()}
           </div>
@@ -2367,6 +2504,20 @@ function AppContent() {
           setShowLogoutConfirm(false);
         }}
       />
+
+      {/* 予約完了画面 */}
+      {showBookingSuccess && bookingExpertId && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <BookingSuccess
+            expertId={bookingExpertId}
+            onClose={() => {
+              setShowBookingSuccess(false);
+              setBookingExpertId(null);
+              setSelectedExpert(null);
+            }}
+          />
+        </div>
+      )}
 
       {/* 削除確認ダイアログ */}
       <Dialog open={showDeleteConfirm} onClose={handleDeleteCancel} className="relative z-50">

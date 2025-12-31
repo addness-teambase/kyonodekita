@@ -1,5 +1,5 @@
 {
-  "name": "parent-app",
+  "name": "expert-admin-app",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,18 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.8.0",
     "@headlessui/react": "^1.7.18",
-    "@supabase/auth-helpers-react": "^0.5.0",
-    "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.4",
-    "@types/canvas-confetti": "^1.9.0",
-    "canvas-confetti": "^1.9.3",
     "date-fns": "^3.3.1",
     "lucide-react": "^0.363.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-virtuoso": "^4.14.1",
     "vite-plugin-pwa": "^0.19.2"
   },
   "devDependencies": {
@@ -43,3 +37,8 @@
     "vite": "^5.1.6"
   }
 }
+
+
+
+
+

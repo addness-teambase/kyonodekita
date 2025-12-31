@@ -24,7 +24,8 @@ import {
   Trash2,
   Megaphone,
   ChevronLeft,
-  Printer
+  Printer,
+  FileText
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -34,6 +35,7 @@ import CalendarView from './components/CalendarView';
 import LogoutConfirmDialog from './components/LogoutConfirmDialog';
 import MonthlyRecordsByChild from './components/MonthlyRecordsByChild';
 import MonthlyAttendanceByChild from './components/MonthlyAttendanceByChild';
+import IndividualSupportPlan from './components/IndividualSupportPlan';
 import { supabase, directChatApi } from './lib/supabase';
 
 // 初回設定モーダルコンポーネント
@@ -2300,6 +2302,7 @@ const App: React.FC = () => {
     { id: 'management', label: '園児管理', icon: Users },
     { id: 'attendance', label: '出席記録', icon: BookOpen },
     { id: 'records', label: '成長記録', icon: Heart },
+    { id: 'support_plan', label: '個別支援計画書', icon: FileText },
     { id: 'messages', label: 'メッセージ', icon: MessageSquare, badge: stats.unreadMessages },
     { id: 'announcements', label: '一斉お知らせ', icon: Megaphone },
     { id: 'calendar', label: 'カレンダー', icon: Calendar },
@@ -3769,6 +3772,9 @@ const App: React.FC = () => {
 
       case 'calendar':
         return <CalendarView />;
+
+      case 'support_plan':
+        return <IndividualSupportPlan />;
 
       case 'settings':
         return (
